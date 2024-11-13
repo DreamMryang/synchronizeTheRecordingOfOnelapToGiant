@@ -6,6 +6,7 @@ import com.dream.mryang.syncTheRecordingOfOnelapToGiant.utils.HttpClientUtil;
 import com.dream.mryang.syncTheRecordingOfOnelapToGiant.utils.TxtOperationUtil;
 import org.apache.commons.codec.digest.DigestUtils;
 import org.apache.commons.collections4.CollectionUtils;
+import org.apache.commons.lang3.concurrent.BasicThreadFactory;
 import org.apache.http.NameValuePair;
 import org.apache.http.entity.ContentType;
 import org.apache.http.entity.mime.MultipartEntityBuilder;
@@ -14,8 +15,13 @@ import org.apache.http.message.BasicNameValuePair;
 import org.apache.http.protocol.HTTP;
 
 import java.io.File;
+import java.time.LocalDateTime;
+import java.time.format.DateTimeFormatter;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.concurrent.ScheduledExecutorService;
+import java.util.concurrent.ScheduledThreadPoolExecutor;
+import java.util.concurrent.TimeUnit;
 import java.util.stream.Collectors;
 
 /**
@@ -53,21 +59,48 @@ public class Main {
     /**
      * 顽鹿运动fit文件存储目录
      */
-    private static final String ONELAP_FIT_FILE_STORAGE_DIRECOTRY = "W:\\onelapFitFileStorageDirecotry\\";
+    private static final String ONELAP_FIT_FILE_STORAGE_DIRECOTRY = "/opt/yang/onelapFitFileStorageDirecotry/";
 
     /**
      * 已同步fit文件记录存储txt文件路径
      */
-    private static final String SYNC_FIT_FILE_SAVE_FILE_PATH = "W:\\onelapFitFileStorageDirecotry\\syncFitFileSaveFile.txt";
+    private static final String SYNC_FIT_FILE_SAVE_FILE_PATH = "/opt/yang/onelapFitFileStorageDirecotry/syncFitFileSaveFile.txt";
+
+    /**
+     * 延迟初次执行的时间
+     */
+    private static final long INITIAL_DELAY = 0;
+
+    /**
+     * 两次执行之间的周期
+     */
+    private static final long PERIOD = 1;
+
+    /**
+     * 时间单位为 天
+     */
+    private static final TimeUnit TIME_UNIT = TimeUnit.DAYS;
 
     public static void main(String[] args) {
-        // 下载顽鹿运动fit文件
-        ArrayList<String> fitFileNameList = downloadTheOnelapFitFile();
-        // fit文件同步到捷安特骑行
-        if (CollectionUtils.isNotEmpty(fitFileNameList)) {
-            syncFitFilesToGiantBike(fitFileNameList);
-        }
-        System.out.println("已完成同步数量：" + fitFileNameList.size());
+        // 定时任务执行体
+        Runnable task = () -> {
+            System.out.println("当前时间：" + LocalDateTime.now().format(DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss")));
+            // 下载顽鹿运动fit文件
+            ArrayList<String> fitFileNameList = downloadTheOnelapFitFile();
+            // fit文件同步到捷安特骑行
+            if (CollectionUtils.isNotEmpty(fitFileNameList)) {
+                syncFitFilesToGiantBike(fitFileNameList);
+            }
+            System.out.println("已完成同步数量：" + fitFileNameList.size());
+        };
+
+        // 创建定时任务执行线程池
+        ScheduledExecutorService executorService = new ScheduledThreadPoolExecutor(1,
+                new BasicThreadFactory.Builder().namingPattern("example-schedule-pool-%d")
+                        .build());
+
+        // 安排任务定期执行
+        executorService.scheduleAtFixedRate(task, INITIAL_DELAY, PERIOD, TIME_UNIT);
     }
 
     private static ArrayList<String> downloadTheOnelapFitFile() {
