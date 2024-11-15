@@ -92,6 +92,7 @@ public class Main {
                 syncFitFilesToGiantBike(fitFileNameList);
             }
             System.out.println("已完成同步数量：" + fitFileNameList.size());
+            System.out.println("----------------分割线----------------");
         };
 
         // 创建定时任务执行线程池
@@ -139,12 +140,12 @@ public class Main {
             endIndex = myActivities.size();
         }
 
+        // 读取已同步文件
+        ArrayList<String> list = TxtOperationUtil.readTxtFile(SYNC_FIT_FILE_SAVE_FILE_PATH);
         // 同步文件名称
         ArrayList<String> syncFileName = new ArrayList<>();
         // 将已经同步的文件过滤
         List<Object> myActivitieObjectList = myActivities.stream().limit(endIndex).filter(a -> {
-            // 读取已同步文件
-            ArrayList<String> list = TxtOperationUtil.readTxtFile(SYNC_FIT_FILE_SAVE_FILE_PATH);
             // 获取 我的活动 数据
             JSONObject jsonObject = (JSONObject) JSONObject.toJSON(a);
             // 解析出文件名
