@@ -108,7 +108,7 @@ public class Main {
         // 调 顽鹿运动登录 接口，获取登录信息
         String loginReturnJsonString = HttpClientUtil.doPostJson("https://www.onelap.cn/api/login", "{\"account\":\"" + ONELAP_ACCOUNT + "\",\"password\":\"" + DigestUtils.md5Hex(ONELAP_PASSWORD) + "\"}", null, null);
         // 输出 登录信息 Json字符串
-        System.out.println("调 顽鹿运动登录 接口，响应值：" + loginReturnJsonString);
+        System.out.println("调 顽鹿运动登录 接口响应值：" + loginReturnJsonString);
         // 解析 登录信息 Json字符串
         JSONObject loginReturnData = JSONObject.parseObject(loginReturnJsonString);
         JSONArray data = loginReturnData.getJSONArray("data");
@@ -178,7 +178,7 @@ public class Main {
 
         // 调 捷安特骑行登录 接口，获取登录信息
         String loginReturnJsonString = HttpClientUtil.doPostJson("https://ridelife.giant.com.cn/index.php/api/login", null, formParams, null);
-        System.out.println("调 捷安特骑行登录 接口，响应值：" + loginReturnJsonString);
+        System.out.println("调 捷安特骑行登录 接口响应值：" + loginReturnJsonString);
         // 解析 登录信息 Json字符串
         JSONObject loginReturnData = JSONObject.parseObject(loginReturnJsonString);
         // 解析出登录token1
