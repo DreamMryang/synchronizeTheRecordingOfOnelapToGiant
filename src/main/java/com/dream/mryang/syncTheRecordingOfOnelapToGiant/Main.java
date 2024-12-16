@@ -59,12 +59,12 @@ public class Main {
     /**
      * 顽鹿运动fit文件存储目录
      */
-    private static final String ONELAP_FIT_FILE_STORAGE_DIRECOTRY = "/opt/yang/onelapFitFileStorageDirecotry/";
+    private static final String ONELAP_FIT_FILE_STORAGE_DIRECOTRY = "E:\\onelapFitFileStorageDirecotry\\";
 
     /**
      * 已同步fit文件记录存储txt文件路径
      */
-    private static final String SYNC_FIT_FILE_SAVE_FILE_PATH = "/opt/yang/onelapFitFileStorageDirecotry/syncFitFileSaveFile.txt";
+    private static final String SYNC_FIT_FILE_SAVE_FILE_PATH = "E:\\onelapFitFileStorageDirecotry\\syncFitFileSaveFile.txt";
 
     /**
      * 延迟初次执行的时间
@@ -77,9 +77,9 @@ public class Main {
     private static final long PERIOD = 1;
 
     /**
-     * 时间单位为 天
+     * 时间单位为 小时
      */
-    private static final TimeUnit TIME_UNIT = TimeUnit.DAYS;
+    private static final TimeUnit TIME_UNIT = TimeUnit.HOURS;
 
     public static void main(String[] args) {
         // 定时任务执行体
@@ -87,11 +87,11 @@ public class Main {
             System.out.println("当前时间：" + LocalDateTime.now().format(DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss")));
             // 下载顽鹿运动fit文件
             ArrayList<String> fitFileNameList = downloadTheOnelapFitFile();
+            System.out.println("【预计】同步数量：" + fitFileNameList.size());
             // fit文件同步到捷安特骑行
             if (CollectionUtils.isNotEmpty(fitFileNameList)) {
                 syncFitFilesToGiantBike(fitFileNameList);
             }
-            System.out.println("已完成同步数量：" + fitFileNameList.size());
             System.out.println("----------------分割线----------------");
         };
 
@@ -108,7 +108,7 @@ public class Main {
         // 调 顽鹿运动登录 接口，获取登录信息
         String loginReturnJsonString = HttpClientUtil.doPostJson("https://www.onelap.cn/api/login", "{\"account\":\"" + ONELAP_ACCOUNT + "\",\"password\":\"" + DigestUtils.md5Hex(ONELAP_PASSWORD) + "\"}", null, null);
         // 输出 登录信息 Json字符串
-        System.out.println(loginReturnJsonString);
+        System.out.println("调 顽鹿运动登录 接口，响应值：" + loginReturnJsonString);
         // 解析 登录信息 Json字符串
         JSONObject loginReturnData = JSONObject.parseObject(loginReturnJsonString);
         JSONArray data = loginReturnData.getJSONArray("data");
@@ -178,6 +178,7 @@ public class Main {
 
         // 调 捷安特骑行登录 接口，获取登录信息
         String loginReturnJsonString = HttpClientUtil.doPostJson("https://ridelife.giant.com.cn/index.php/api/login", null, formParams, null);
+        System.out.println("调 捷安特骑行登录 接口，响应值：" + loginReturnJsonString);
         // 解析 登录信息 Json字符串
         JSONObject loginReturnData = JSONObject.parseObject(loginReturnJsonString);
         // 解析出登录token1
@@ -196,7 +197,7 @@ public class Main {
         // 调用接口上传文件
         String respondJson = HttpClientUtil.doPostJson("https://ridelife.giant.com.cn/index.php/api/upload_fit", null, null, multipartEntityBuilder);
         // 输出响应
-        System.out.println(respondJson);
+        System.out.println("调 捷安特上传文件 接口响应值：" + respondJson);
 
         // 解析 上传文件 Json字符串
         JSONObject respondJsonData = JSONObject.parseObject(respondJson);
@@ -205,8 +206,9 @@ public class Main {
         if (status == 1) {
             // 存储同步文件记录
             TxtOperationUtil.writeTxtFile(SYNC_FIT_FILE_SAVE_FILE_PATH, fitFileNameList);
+            System.out.println("【完成】同步数量：" + fitFileNameList.size());
         } else {
-            throw new RuntimeException("调用接口上传文件响应异常，异常信息：" + respondJson);
+            System.out.println("调用接口上传文件响应异常，异常信息：" + respondJson);
         }
     }
 }
