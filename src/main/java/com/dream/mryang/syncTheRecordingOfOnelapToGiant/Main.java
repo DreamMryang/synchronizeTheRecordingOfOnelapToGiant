@@ -84,15 +84,19 @@ public class Main {
     public static void main(String[] args) {
         // 定时任务执行体
         Runnable task = () -> {
-            System.out.println("当前时间：" + LocalDateTime.now().format(DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss")));
-            // 下载顽鹿运动fit文件
-            ArrayList<String> fitFileNameList = downloadTheOnelapFitFile();
-            System.out.println("【预计】同步数量：" + fitFileNameList.size());
-            // fit文件同步到捷安特骑行
-            if (CollectionUtils.isNotEmpty(fitFileNameList)) {
-                syncFitFilesToGiantBike(fitFileNameList);
+            try {
+                System.out.println("当前时间：" + LocalDateTime.now().format(DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss")));
+                // 下载顽鹿运动fit文件
+                ArrayList<String> fitFileNameList = downloadTheOnelapFitFile();
+                System.out.println("【预计】同步数量：" + fitFileNameList.size());
+                // fit文件同步到捷安特骑行
+                if (CollectionUtils.isNotEmpty(fitFileNameList)) {
+                    syncFitFilesToGiantBike(fitFileNameList);
+                }
+                System.out.println("----------------分割线----------------");
+            } catch (Exception e) {
+                System.out.println("!!!!!!发生异常：" + e.getMessage());
             }
-            System.out.println("----------------分割线----------------");
         };
 
         // 创建定时任务执行线程池
