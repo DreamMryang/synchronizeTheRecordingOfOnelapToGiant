@@ -93,10 +93,10 @@ public class Main {
                 if (CollectionUtils.isNotEmpty(fitFileNameList)) {
                     syncFitFilesToGiantBike(fitFileNameList);
                 }
-                System.out.println("----------------分割线----------------");
             } catch (Exception e) {
                 System.out.println("!!!!!!发生异常：" + e.getMessage());
             }
+            System.out.println("----------------分割线----------------");
         };
 
         // 创建定时任务执行线程池
@@ -185,7 +185,7 @@ public class Main {
         System.out.println("调 捷安特骑行登录 接口响应值：" + loginReturnJsonString);
         // 解析 登录信息 Json字符串
         JSONObject loginReturnData = JSONObject.parseObject(loginReturnJsonString);
-        // 解析出登录token1
+        // 解析出登录token
         String userToken = loginReturnData.getString("user_token");
 
         // 封装捷安特骑行上传fit文件参数
@@ -205,7 +205,7 @@ public class Main {
 
         // 解析 上传文件 Json字符串
         JSONObject respondJsonData = JSONObject.parseObject(respondJson);
-        // 解析出登录token1
+        // 解析 上传文件 状态
         Integer status = respondJsonData.getInteger("status");
         if (status == 1) {
             // 存储同步文件记录
