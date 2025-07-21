@@ -21,6 +21,7 @@ import java.io.FileOutputStream;
 import java.io.IOException;
 import java.net.URI;
 import java.net.URISyntaxException;
+import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 
@@ -34,8 +35,9 @@ public class HttpClientUtil {
      *
      * @param url        请求地址
      * @param formParams formData参数
+     * @param headers    请求头数据
      */
-    public static String doPostJson(String url, String json, List<NameValuePair> formParams, MultipartEntityBuilder filesMultipartEntityBuilder) {
+    public static String doPostJson(String url, String json, List<NameValuePair> formParams, MultipartEntityBuilder filesMultipartEntityBuilder, HashMap<String, String> headers) {
         // 创建Httpclient对象
         try (CloseableHttpClient httpClient = HttpClients.createDefault()) {
             // 创建Http Post请求
@@ -55,6 +57,12 @@ public class HttpClientUtil {
             if (filesMultipartEntityBuilder != null) {
                 HttpEntity entity = filesMultipartEntityBuilder.build();
                 httpPost.setEntity(entity);
+            }
+            // 请求头数据
+            if (headers != null) {
+                for (String key : headers.keySet()) {
+                    httpPost.setHeader(key, headers.get(key));
+                }
             }
             // 执行http请求
             CloseableHttpResponse response = httpClient.execute(httpPost);

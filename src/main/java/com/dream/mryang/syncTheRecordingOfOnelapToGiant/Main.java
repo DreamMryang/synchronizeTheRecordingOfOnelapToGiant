@@ -15,10 +15,13 @@ import org.apache.http.message.BasicNameValuePair;
 import org.apache.http.protocol.HTTP;
 
 import java.io.File;
+import java.time.Instant;
 import java.time.LocalDateTime;
 import java.time.format.DateTimeFormatter;
 import java.util.ArrayList;
+import java.util.HashMap;
 import java.util.List;
+import java.util.UUID;
 import java.util.concurrent.ScheduledExecutorService;
 import java.util.concurrent.ScheduledThreadPoolExecutor;
 import java.util.concurrent.TimeUnit;
@@ -109,8 +112,26 @@ public class Main {
     }
 
     private static ArrayList<String> downloadTheOnelapFitFile() {
+        // 顽鹿运动官网 在登录时做了签名认证
+        // 需在请求头中加入签名数据
+        // 后加的签名效验不知道是不是为了防止其他方式调用接口设计的，如果是，请联系本人删除公开的代码
+
+        // 封装请求头数据
+        // 随机16位字符串
+        String nonce = UUID.randomUUID().toString().replace("-", "").substring(16);
+        // 获取当前时间戳(秒级)
+        String timestamp = String.valueOf(Instant.now().getEpochSecond());
+        // 封装加签数据
+        // 只做登录，简单处理
+        String sign = DigestUtils.md5Hex("account=" + ONELAP_ACCOUNT + "&nonce=" + nonce + "&password=" + DigestUtils.md5Hex(ONELAP_PASSWORD) +
+                "&timestamp=" + timestamp + "&key=" + "fe9f8382418fcdeb136461cac6acae7b");
+        HashMap<String, String> headers = new HashMap<>();
+        headers.put("nonce", nonce);
+        headers.put("timestamp", timestamp);
+        headers.put("sign", sign);
+
         // 调 顽鹿运动登录 接口，获取登录信息
-        String loginReturnJsonString = HttpClientUtil.doPostJson("https://www.onelap.cn/api/login", "{\"account\":\"" + ONELAP_ACCOUNT + "\",\"password\":\"" + DigestUtils.md5Hex(ONELAP_PASSWORD) + "\"}", null, null);
+        String loginReturnJsonString = HttpClientUtil.doPostJson("https://www.onelap.cn/api/login", "{\"account\":\"" + ONELAP_ACCOUNT + "\",\"password\":\"" + DigestUtils.md5Hex(ONELAP_PASSWORD) + "\"}", null, null, headers);
         // 输出 登录信息 Json字符串
         System.out.println("调 顽鹿运动登录 接口响应值：" + loginReturnJsonString);
         // 解析 登录信息 Json字符串
@@ -181,7 +202,7 @@ public class Main {
         formParams.add(new BasicNameValuePair("password", GIANT_PASSWORD));
 
         // 调 捷安特骑行登录 接口，获取登录信息
-        String loginReturnJsonString = HttpClientUtil.doPostJson("https://ridelife.giant.com.cn/index.php/api/login", null, formParams, null);
+        String loginReturnJsonString = HttpClientUtil.doPostJson("https://ridelife.giant.com.cn/index.php/api/login", null, formParams, null, null);
         System.out.println("调 捷安特骑行登录 接口响应值：" + loginReturnJsonString);
         // 解析 登录信息 Json字符串
         JSONObject loginReturnData = JSONObject.parseObject(loginReturnJsonString);
@@ -199,7 +220,7 @@ public class Main {
         multipartEntityBuilder.addPart("brand", new StringBody("onelap", CONTENT_TYPE));
 
         // 调用接口上传文件
-        String respondJson = HttpClientUtil.doPostJson("https://ridelife.giant.com.cn/index.php/api/upload_fit", null, null, multipartEntityBuilder);
+        String respondJson = HttpClientUtil.doPostJson("https://ridelife.giant.com.cn/index.php/api/upload_fit", null, null, multipartEntityBuilder, null);
         // 输出响应
         System.out.println("调 捷安特上传文件 接口响应值：" + respondJson);
 
