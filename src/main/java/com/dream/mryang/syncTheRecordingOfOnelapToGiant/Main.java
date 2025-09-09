@@ -6,25 +6,20 @@ import com.dream.mryang.syncTheRecordingOfOnelapToGiant.utils.HttpClientUtil;
 import com.dream.mryang.syncTheRecordingOfOnelapToGiant.utils.TxtOperationUtil;
 import org.apache.commons.codec.digest.DigestUtils;
 import org.apache.commons.collections4.CollectionUtils;
-import org.apache.commons.lang3.concurrent.BasicThreadFactory;
 import org.apache.http.NameValuePair;
 import org.apache.http.entity.ContentType;
 import org.apache.http.entity.mime.MultipartEntityBuilder;
 import org.apache.http.entity.mime.content.StringBody;
 import org.apache.http.message.BasicNameValuePair;
 import org.apache.http.protocol.HTTP;
+import org.quartz.*;
+import org.quartz.impl.StdSchedulerFactory;
 
 import java.io.File;
 import java.time.Instant;
 import java.time.LocalDateTime;
 import java.time.format.DateTimeFormatter;
-import java.util.ArrayList;
-import java.util.HashMap;
-import java.util.List;
-import java.util.UUID;
-import java.util.concurrent.ScheduledExecutorService;
-import java.util.concurrent.ScheduledThreadPoolExecutor;
-import java.util.concurrent.TimeUnit;
+import java.util.*;
 import java.util.stream.Collectors;
 
 /**
@@ -62,31 +57,54 @@ public class Main {
     /**
      * 顽鹿运动fit文件存储目录
      */
-    private static final String ONELAP_FIT_FILE_STORAGE_DIRECOTRY = "E:\\onelapFitFileStorageDirecotry\\";
+//    private static final String ONELAP_FIT_FILE_STORAGE_DIRECOTRY = "E:\\onelapFitFileStorageDirecotry\\";
+    private static final String ONELAP_FIT_FILE_STORAGE_DIRECOTRY = "/home/aibot/yangyang/syncTheRecordingOfOnelapToGiant/onelapFitFileStorageDirecotry/";
 
     /**
      * 已同步fit文件记录存储txt文件路径
      */
-    private static final String SYNC_FIT_FILE_SAVE_FILE_PATH = "E:\\onelapFitFileStorageDirecotry\\syncFitFileSaveFile.txt";
+//    private static final String SYNC_FIT_FILE_SAVE_FILE_PATH = "E:\\onelapFitFileStorageDirecotry\\syncFitFileSaveFile.txt";
+    private static final String SYNC_FIT_FILE_SAVE_FILE_PATH = "/home/aibot/yangyang/syncTheRecordingOfOnelapToGiant/onelapFitFileStorageDirecotry/syncFitFileSaveFile.txt";
 
     /**
-     * 延迟初次执行的时间
+     * 同步任务cron表达式1，每3小时执行一次
      */
-    private static final long INITIAL_DELAY = 0;
+    private static final String SYNC_CRON_ONE_EXPRESSION = "0 0 0/3 * * ?";
 
     /**
-     * 两次执行之间的周期
+     * 同步任务cron表达式2，早上8点至10点之间每15分钟执行一次
      */
-    private static final long PERIOD = 1;
+    private static final String SYNC_CRON_TWO_EXPRESSION = "0 0/15 8-9 * * ?";
 
-    /**
-     * 时间单位为 小时
-     */
-    private static final TimeUnit TIME_UNIT = TimeUnit.HOURS;
+    public static void main(String[] args) throws SchedulerException {
+        // 创建JobDetail实例
+        JobDetail job = JobBuilder.newJob(TaskJob.class).build();
 
-    public static void main(String[] args) {
-        // 定时任务执行体
-        Runnable task = () -> {
+        // 创建Trigger实例，定义任务执行的时间规则
+        Trigger trigger1 = TriggerBuilder.newTrigger()
+                .startNow()
+                .withSchedule(CronScheduleBuilder.cronSchedule(SYNC_CRON_ONE_EXPRESSION))
+                .build();
+        // 创建Trigger实例，定义任务执行的时间规则
+        Trigger trigger2 = TriggerBuilder.newTrigger()
+                .withSchedule(CronScheduleBuilder.cronSchedule(SYNC_CRON_TWO_EXPRESSION))
+                .build();
+
+        // 获取Scheduler实例
+        Scheduler scheduler = StdSchedulerFactory.getDefaultScheduler();
+        // 将任务和多个触发器注册到调度器中
+        Set<Trigger> triggers = new HashSet<>();
+        triggers.add(trigger1);
+        triggers.add(trigger2);
+        scheduler.scheduleJob(job, triggers, true);
+        // 启动调度器
+        scheduler.start();
+    }
+
+    // 定义任务类
+    public static class TaskJob implements Job {
+        @Override
+        public void execute(JobExecutionContext jobExecutionContext) {
             try {
                 System.out.println("当前时间：" + LocalDateTime.now().format(DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss")));
                 // 下载顽鹿运动fit文件
@@ -100,15 +118,7 @@ public class Main {
                 System.out.println("!!!!!!发生异常：" + e.getMessage());
             }
             System.out.println("----------------分割线----------------");
-        };
-
-        // 创建定时任务执行线程池
-        ScheduledExecutorService executorService = new ScheduledThreadPoolExecutor(1,
-                new BasicThreadFactory.Builder().namingPattern("example-schedule-pool-%d")
-                        .build());
-
-        // 安排任务定期执行
-        executorService.scheduleAtFixedRate(task, INITIAL_DELAY, PERIOD, TIME_UNIT);
+        }
     }
 
     private static ArrayList<String> downloadTheOnelapFitFile() {
