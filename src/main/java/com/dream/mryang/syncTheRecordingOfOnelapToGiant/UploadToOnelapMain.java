@@ -7,7 +7,6 @@ import org.apache.http.entity.mime.MultipartEntityBuilder;
 import org.apache.http.entity.mime.content.StringBody;
 
 import java.io.File;
-import java.io.IOException;
 import java.nio.file.Path;
 import java.nio.file.Paths;
 import java.util.HashMap;
@@ -21,7 +20,7 @@ public class UploadToOnelapMain {
     /**
      * 将指定文件上传至顽鹿运动
      */
-    public static void main(String[] args) throws IOException, InterruptedException {
+    public static void main(String[] args) throws InterruptedException {
         // todo 批量下载捷安特骑行fit同步fit文件
 
         // 计数对象
