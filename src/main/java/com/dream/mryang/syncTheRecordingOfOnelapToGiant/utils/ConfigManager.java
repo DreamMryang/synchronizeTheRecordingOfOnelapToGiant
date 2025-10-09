@@ -2,6 +2,7 @@ package com.dream.mryang.syncTheRecordingOfOnelapToGiant.utils;
 
 import java.io.IOException;
 import java.io.InputStream;
+import java.io.InputStreamReader;
 import java.util.Properties;
 
 /**
@@ -24,7 +25,7 @@ public class ConfigManager {
             if (input == null) {
                 throw new RuntimeException("无法找到配置文件config.properties");
             }
-            properties.load(input);
+            properties.load(new InputStreamReader(input));
         } catch (IOException ex) {
             System.out.println("加载配置文件异常" + ex.getMessage());
         }

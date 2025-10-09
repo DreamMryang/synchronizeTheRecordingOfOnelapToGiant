@@ -1,5 +1,6 @@
 package com.dream.mryang.syncTheRecordingOfOnelapToGiant;
 
+import com.dream.mryang.syncTheRecordingOfOnelapToGiant.utils.ConfigManager;
 import com.dream.mryang.syncTheRecordingOfOnelapToGiant.utils.HttpClientUtil;
 import org.apache.http.Consts;
 import org.apache.http.entity.ContentType;
@@ -10,6 +11,7 @@ import java.io.File;
 import java.nio.file.Path;
 import java.nio.file.Paths;
 import java.util.HashMap;
+import java.util.Properties;
 import java.util.concurrent.atomic.AtomicInteger;
 
 /**
@@ -17,21 +19,29 @@ import java.util.concurrent.atomic.AtomicInteger;
  * @since 2025/9/26
  **/
 public class UploadToOnelapMain {
+
+    /**
+     * 加载配置文件
+     */
+    private static final Properties properties = ConfigManager.getProperties();
+
     /**
      * 将指定文件上传至顽鹿运动
      */
     public static void main(String[] args) throws InterruptedException {
-        // todo 批量下载捷安特骑行fit同步fit文件
+        // todo 批量下载捷安特骑行fit同步文件
+
+        // 存储需上传至顽鹿运动的文件路径
+        Path directoryPath = Paths.get(properties.getProperty("upload.toonelap.path"));
 
         // 计数对象
         AtomicInteger count = new AtomicInteger(0);
-
-        // fit文件存储路径
-        Path directoryPath = Paths.get("W:\\捷安特fit文件");
+        // 循环上传文件
         File directory = directoryPath.toFile();
         if (directory.exists() && directory.isDirectory()) {
             File[] files = directory.listFiles();
             if (files != null) {
+                System.out.println("获取文件数量：" + files.length);
                 for (File file : files) {
                     if (file.isFile()) {
                         // 封装顽鹿运动上传fit文件参数
@@ -39,11 +49,11 @@ public class UploadToOnelapMain {
                         multipartEntityBuilder.addBinaryBody("jilu", file, ContentType.DEFAULT_BINARY, file.getName());
                         ContentType CONTENT_TYPE = ContentType.create("text/plain", Consts.UTF_8);
                         // 封装token
-                        multipartEntityBuilder.addPart("_token", new StringBody("", CONTENT_TYPE));
+                        multipartEntityBuilder.addPart("_token", new StringBody(properties.getProperty("upload.toonelap.token"), CONTENT_TYPE));
 
                         // 封装cookie
                         HashMap<String, String> headers = new HashMap<>();
-                        headers.put("cookie", "");
+                        headers.put("cookie", properties.getProperty("upload.toonelap.cookie"));
 
                         // 调用接口上传文件
                         String respondJson = HttpClientUtil.doPostJson("https://u.onelap.cn/upload/fit", null, null,
