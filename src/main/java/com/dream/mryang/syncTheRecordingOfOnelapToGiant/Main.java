@@ -29,11 +29,6 @@ import java.util.stream.Collectors;
  **/
 public class Main {
 
-    /**
-     * 加载配置文件
-     */
-    private static final Properties properties = ConfigManager.getProperties();
-
     public static void main(String[] args) throws SchedulerException {
         // 创建JobDetail实例
         JobDetail job = JobBuilder.newJob(TaskJob.class).build();
@@ -41,11 +36,11 @@ public class Main {
         // 创建Trigger实例，定义任务执行的时间规则
         Trigger trigger1 = TriggerBuilder.newTrigger()
                 .startNow()
-                .withSchedule(CronScheduleBuilder.cronSchedule(properties.getProperty("sync.cronone.expression")))
+                .withSchedule(CronScheduleBuilder.cronSchedule(ConfigManager.getProperty("sync.cronone.expression")))
                 .build();
         // 创建Trigger实例，定义任务执行的时间规则
         Trigger trigger2 = TriggerBuilder.newTrigger()
-                .withSchedule(CronScheduleBuilder.cronSchedule(properties.getProperty("sync.crontwo.expression")))
+                .withSchedule(CronScheduleBuilder.cronSchedule(ConfigManager.getProperty("sync.crontwo.expression")))
                 .build();
 
         // 获取Scheduler实例
@@ -76,7 +71,8 @@ public class Main {
                     syncFitFilesToGiantBike(fitFileNameList);
                 }
             } catch (Exception e) {
-                System.out.println("发生异常：" + e.getMessage());
+                System.out.println("发生异常：" + e.getClass().getName());
+                System.out.println("异常提示信息：" + e.getMessage());
             }
             System.out.println("----------------分割线----------------");
         }
@@ -94,7 +90,7 @@ public class Main {
         String timestamp = String.valueOf(Instant.now().getEpochSecond());
         // 封装加签数据
         // 只做登录，简单处理
-        String sign = DigestUtils.md5Hex("account=" + properties.getProperty("onelap.account") + "&nonce=" + nonce + "&password=" + DigestUtils.md5Hex(properties.getProperty("onelap.password")) +
+        String sign = DigestUtils.md5Hex("account=" + ConfigManager.getProperty("onelap.account") + "&nonce=" + nonce + "&password=" + DigestUtils.md5Hex(ConfigManager.getProperty("onelap.password")) +
                 "&timestamp=" + timestamp + "&key=" + "fe9f8382418fcdeb136461cac6acae7b");
         HashMap<String, String> headers = new HashMap<>();
         headers.put("nonce", nonce);
@@ -102,7 +98,7 @@ public class Main {
         headers.put("sign", sign);
 
         // 调 顽鹿运动登录 接口，获取登录信息
-        String loginReturnJsonString = HttpClientUtil.doPostJson("https://www.onelap.cn/api/login", "{\"account\":\"" + properties.getProperty("onelap.account") + "\",\"password\":\"" + DigestUtils.md5Hex(properties.getProperty("onelap.password")) + "\"}", null, null, headers);
+        String loginReturnJsonString = HttpClientUtil.doPostJson("https://www.onelap.cn/api/login", "{\"account\":\"" + ConfigManager.getProperty("onelap.account") + "\",\"password\":\"" + DigestUtils.md5Hex(ConfigManager.getProperty("onelap.password")) + "\"}", null, null, headers);
         // 输出 登录信息 Json字符串
         System.out.println("调 顽鹿运动登录 接口响应值：" + loginReturnJsonString);
         // 解析 登录信息 Json字符串
@@ -129,10 +125,10 @@ public class Main {
         JSONArray myActivities = myActivitiesData.getJSONArray("data");
 
         // 确认同步最近活动数量
-        int endIndex = Math.min(myActivities.size(), Integer.parseInt(properties.getProperty("sync.recent.activity.count")));
+        int endIndex = Math.min(myActivities.size(), Integer.parseInt(ConfigManager.getProperty("sync.recent.activity.count")));
 
         // 读取已同步文件
-        ArrayList<String> list = TxtOperationUtil.readTxtFile(properties.getProperty("sync.fit.file.save.path"));
+        ArrayList<String> list = TxtOperationUtil.readTxtFile(ConfigManager.getProperty("sync.fit.file.save.path"));
         // 同步文件名称
         ArrayList<String> syncFileName = new ArrayList<>();
         // 将已经同步的文件过滤
@@ -152,7 +148,7 @@ public class Main {
             // 解析出下载地址
             String durl = jsonObject.getString("durl");
             // 创建下载存储文件对象
-            File file = new File(properties.getProperty("onelap.fit.file.storage.directory") + fileKey);
+            File file = new File(ConfigManager.getProperty("onelap.fit.file.storage.directory") + fileKey);
             // 发送下载文件请求
             HttpClientUtil.doPostJson(durl, file);
             syncFileName.add(fileKey);
@@ -164,8 +160,8 @@ public class Main {
         // 封装捷安特骑行登录参数
         // 创建NameValuePair列表用于存储表单数据
         List<NameValuePair> formParams = new ArrayList<>();
-        formParams.add(new BasicNameValuePair("username", properties.getProperty("giant.username")));
-        formParams.add(new BasicNameValuePair("password", properties.getProperty("giant.password")));
+        formParams.add(new BasicNameValuePair("username", ConfigManager.getProperty("giant.username")));
+        formParams.add(new BasicNameValuePair("password", ConfigManager.getProperty("giant.password")));
 
         // 调 捷安特骑行登录 接口，获取登录信息
         String loginReturnJsonString = HttpClientUtil.doPostJson("https://ridelife.giant.com.cn/index.php/api/login", null, formParams, null, null);
@@ -178,7 +174,7 @@ public class Main {
         // 封装捷安特骑行上传fit文件参数
         MultipartEntityBuilder multipartEntityBuilder = MultipartEntityBuilder.create();
         for (String fitFileName : fitFileNameList) {
-            File file = new File(properties.getProperty("onelap.fit.file.storage.directory") + fitFileName);
+            File file = new File(ConfigManager.getProperty("onelap.fit.file.storage.directory") + fitFileName);
             multipartEntityBuilder.addBinaryBody("files[]", file, ContentType.DEFAULT_BINARY, file.getName());
         }
         ContentType CONTENT_TYPE = ContentType.create("text/plain", Consts.UTF_8);
@@ -197,7 +193,7 @@ public class Main {
         Integer status = respondJsonData.getInteger("status");
         if (status == 1) {
             // 存储同步文件记录
-            TxtOperationUtil.writeTxtFile(properties.getProperty("sync.fit.file.save.path"), fitFileNameList);
+            TxtOperationUtil.writeTxtFile(ConfigManager.getProperty("sync.fit.file.save.path"), fitFileNameList);
             System.out.println("【完成】同步数量：" + fitFileNameList.size());
         } else {
             System.out.println("调用接口上传文件响应异常，异常信息：" + respondJson);

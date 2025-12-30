@@ -11,7 +11,6 @@ import java.io.File;
 import java.nio.file.Path;
 import java.nio.file.Paths;
 import java.util.HashMap;
-import java.util.Properties;
 import java.util.concurrent.atomic.AtomicInteger;
 
 /**
@@ -21,18 +20,13 @@ import java.util.concurrent.atomic.AtomicInteger;
 public class UploadToOnelapMain {
 
     /**
-     * 加载配置文件
-     */
-    private static final Properties properties = ConfigManager.getProperties();
-
-    /**
      * 将指定文件上传至顽鹿运动
      */
     public static void main(String[] args) throws InterruptedException {
         // todo 批量下载捷安特骑行fit同步文件
 
         // 存储需上传至顽鹿运动的文件路径
-        Path directoryPath = Paths.get(properties.getProperty("upload.toonelap.path"));
+        Path directoryPath = Paths.get(ConfigManager.getProperty("upload.toonelap.path"));
 
         // 计数对象
         AtomicInteger count = new AtomicInteger(0);
@@ -49,11 +43,11 @@ public class UploadToOnelapMain {
                         multipartEntityBuilder.addBinaryBody("jilu", file, ContentType.DEFAULT_BINARY, file.getName());
                         ContentType CONTENT_TYPE = ContentType.create("text/plain", Consts.UTF_8);
                         // 封装token
-                        multipartEntityBuilder.addPart("_token", new StringBody(properties.getProperty("upload.toonelap.token"), CONTENT_TYPE));
+                        multipartEntityBuilder.addPart("_token", new StringBody(ConfigManager.getProperty("upload.toonelap.token"), CONTENT_TYPE));
 
                         // 封装cookie
                         HashMap<String, String> headers = new HashMap<>();
-                        headers.put("cookie", properties.getProperty("upload.toonelap.cookie"));
+                        headers.put("cookie", ConfigManager.getProperty("upload.toonelap.cookie"));
 
                         // 调用接口上传文件
                         String respondJson = HttpClientUtil.doPostJson("https://u.onelap.cn/upload/fit", null, null,
