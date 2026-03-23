@@ -4,6 +4,7 @@ import org.apache.commons.collections4.CollectionUtils;
 import org.apache.commons.lang3.StringUtils;
 import org.apache.http.HttpEntity;
 import org.apache.http.NameValuePair;
+import org.apache.http.client.config.RequestConfig;
 import org.apache.http.client.entity.UrlEncodedFormEntity;
 import org.apache.http.client.methods.CloseableHttpResponse;
 import org.apache.http.client.methods.HttpGet;
@@ -30,45 +31,43 @@ import java.util.Map;
  * @since 2024/8/29
  **/
 public class HttpClientUtil {
+
+    private static final RequestConfig REQUEST_CONFIG = RequestConfig.custom()
+            .setConnectTimeout(10000)
+            .setSocketTimeout(30000)
+            .build();
+
     /**
      * 发送post请求，传递formData参数
      *
-     * @param url        请求地址
-     * @param formParams formData参数
-     * @param headers    请求头数据
+     * @param url                        请求地址
+     * @param json                       JSON请求体
+     * @param formParams                 表单参数
+     * @param filesMultipartEntityBuilder 文件上传参数
+     * @param headers                    请求头数据
      */
     public static String doPostJson(String url, String json, List<NameValuePair> formParams, MultipartEntityBuilder filesMultipartEntityBuilder, HashMap<String, String> headers) {
-        // 创建Httpclient对象
-        try (CloseableHttpClient httpClient = HttpClients.createDefault()) {
-            // 创建Http Post请求
+        try (CloseableHttpClient httpClient = HttpClients.custom().setDefaultRequestConfig(REQUEST_CONFIG).build()) {
             HttpPost httpPost = new HttpPost(url);
-            // 创建请求Json内容
             if (StringUtils.isNotBlank(json)) {
-                StringEntity entity = new StringEntity(json, ContentType.APPLICATION_JSON);
-                httpPost.setEntity(entity);
+                httpPost.setEntity(new StringEntity(json, ContentType.APPLICATION_JSON));
             }
-            // 创建UrlEncodedFormEntity实例
             if (CollectionUtils.isNotEmpty(formParams)) {
-                UrlEncodedFormEntity entity = new UrlEncodedFormEntity(formParams, "UTF-8");
-                // 设置请求的实体为表单数据
-                httpPost.setEntity(entity);
+                httpPost.setEntity(new UrlEncodedFormEntity(formParams, "UTF-8"));
             }
-            // 传递文件
             if (filesMultipartEntityBuilder != null) {
-                HttpEntity entity = filesMultipartEntityBuilder.build();
-                httpPost.setEntity(entity);
+                httpPost.setEntity(filesMultipartEntityBuilder.build());
             }
-            // 请求头数据
             if (headers != null) {
-                for (String key : headers.keySet()) {
-                    httpPost.setHeader(key, headers.get(key));
+                for (Map.Entry<String, String> entry : headers.entrySet()) {
+                    httpPost.setHeader(entry.getKey(), entry.getValue());
                 }
             }
-            // 执行http请求
-            CloseableHttpResponse response = httpClient.execute(httpPost);
-            return EntityUtils.toString(response.getEntity(), "UTF-8");
+            try (CloseableHttpResponse response = httpClient.execute(httpPost)) {
+                return EntityUtils.toString(response.getEntity(), "UTF-8");
+            }
         } catch (IOException e) {
-            throw new RuntimeException(e);
+            throw new RuntimeException("POST请求失败：" + url, e);
         }
     }
 
@@ -80,56 +79,48 @@ public class HttpClientUtil {
      * @param cookie cookie值
      */
     public static String doGet(String url, Map<String, String> param, String cookie) {
-        // 创建Httpclient对象
-        try (CloseableHttpClient httpclient = HttpClients.createDefault()) {
-            // 创建uri
+        try (CloseableHttpClient httpclient = HttpClients.custom().setDefaultRequestConfig(REQUEST_CONFIG).build()) {
             URIBuilder builder = new URIBuilder(url);
             if (param != null) {
-                for (String key : param.keySet()) {
-                    builder.addParameter(key, param.get(key));
+                for (Map.Entry<String, String> entry : param.entrySet()) {
+                    builder.addParameter(entry.getKey(), entry.getValue());
                 }
             }
             URI uri = builder.build();
-            // 创建http GET请求
             HttpGet httpGet = new HttpGet(uri);
-            // 封装cookie请求头
             if (StringUtils.isNotBlank(cookie)) {
                 httpGet.setHeader("cookie", cookie);
             }
-            // 执行请求
-            CloseableHttpResponse response = httpclient.execute(httpGet);
-            // 判断返回状态是否为200
-            if (response.getStatusLine().getStatusCode() == 200) {
-                return EntityUtils.toString(response.getEntity(), "UTF-8");
-            } else {
-                throw new RuntimeException("判断返回状态不为200，请排查问题");
+            try (CloseableHttpResponse response = httpclient.execute(httpGet)) {
+                if (response.getStatusLine().getStatusCode() == 200) {
+                    return EntityUtils.toString(response.getEntity(), "UTF-8");
+                } else {
+                    throw new RuntimeException("GET请求返回状态码异常：" + response.getStatusLine().getStatusCode() + "，URL：" + url);
+                }
             }
         } catch (IOException | URISyntaxException e) {
-            throw new RuntimeException(e);
+            throw new RuntimeException("GET请求失败：" + url, e);
         }
     }
 
     /**
-     * 发送post请求，获取文件流并保存
+     * 发送post请求，获取文件流并保存到本地
      *
      * @param url      请求地址
      * @param savePath 保存文件全路径
      */
-    public static void doPostJson(String url, File savePath) {
-        // 创建Httpclient对象
-        try (CloseableHttpClient httpClient = HttpClients.createDefault()) {
-            // 创建Http Post请求
+    public static void downloadFile(String url, File savePath) {
+        try (CloseableHttpClient httpClient = HttpClients.custom().setDefaultRequestConfig(REQUEST_CONFIG).build()) {
             HttpPost httpPost = new HttpPost(url);
-            // 执行http请求
-            CloseableHttpResponse response = httpClient.execute(httpPost);
-            HttpEntity httpEntity = response.getEntity();
-            byte[] data = EntityUtils.toByteArray(httpEntity);
-            //存入磁盘
-            try (FileOutputStream fos = new FileOutputStream(savePath)) {
-                fos.write(data);
+            try (CloseableHttpResponse response = httpClient.execute(httpPost)) {
+                HttpEntity httpEntity = response.getEntity();
+                byte[] data = EntityUtils.toByteArray(httpEntity);
+                try (FileOutputStream fos = new FileOutputStream(savePath)) {
+                    fos.write(data);
+                }
             }
         } catch (IOException e) {
-            throw new RuntimeException(e);
+            throw new RuntimeException("文件下载失败：" + url, e);
         }
     }
 }

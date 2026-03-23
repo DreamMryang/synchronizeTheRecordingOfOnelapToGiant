@@ -58,6 +58,7 @@ public class Main {
     }
 
     // 定义任务类
+    @DisallowConcurrentExecution
     public static class TaskJob implements Job {
         @Override
         public void execute(JobExecutionContext jobExecutionContext) {
@@ -72,7 +73,7 @@ public class Main {
                 }
             } catch (Exception e) {
                 System.out.println("发生异常：" + e.getClass().getName());
-                System.out.println("异常提示信息：" + e.getMessage());
+                e.printStackTrace();
             }
             System.out.println("----------------分割线----------------");
         }
@@ -91,7 +92,7 @@ public class Main {
         // 封装加签数据
         // 只做登录，简单处理
         String sign = DigestUtils.md5Hex("account=" + ConfigManager.getProperty("onelap.account") + "&nonce=" + nonce + "&password=" + DigestUtils.md5Hex(ConfigManager.getProperty("onelap.password")) +
-                "&timestamp=" + timestamp + "&key=" + "fe9f8382418fcdeb136461cac6acae7b");
+                "&timestamp=" + timestamp + "&key=" + ConfigManager.getProperty("onelap.sign.key"));
         HashMap<String, String> headers = new HashMap<>();
         headers.put("nonce", nonce);
         headers.put("timestamp", timestamp);
@@ -99,11 +100,13 @@ public class Main {
 
         // 调 顽鹿运动登录 接口，获取登录信息
         String loginReturnJsonString = HttpClientUtil.doPostJson("https://www.onelap.cn/api/login", "{\"account\":\"" + ConfigManager.getProperty("onelap.account") + "\",\"password\":\"" + DigestUtils.md5Hex(ConfigManager.getProperty("onelap.password")) + "\"}", null, null, headers);
-        // 输出 登录信息 Json字符串
         System.out.println("调 顽鹿运动登录 接口响应值：" + loginReturnJsonString);
         // 解析 登录信息 Json字符串
         JSONObject loginReturnData = JSONObject.parseObject(loginReturnJsonString);
         JSONArray data = loginReturnData.getJSONArray("data");
+        if (data == null || data.isEmpty()) {
+            throw new RuntimeException("顽鹿运动登录失败，响应数据为空：" + loginReturnJsonString);
+        }
         JSONObject loginData = data.getJSONObject(0);
         // 解析出登录token1
         String token = loginData.getString("token");
@@ -111,6 +114,9 @@ public class Main {
         String refreshToken = loginData.getString("refresh_token");
         // 解析出userinfo对象信息
         JSONObject loginUserInfoData = loginData.getJSONObject("userinfo");
+        if (loginUserInfoData == null) {
+            throw new RuntimeException("顽鹿运动登录响应中缺少 userinfo 字段：" + loginReturnJsonString);
+        }
         // 解析出uid
         String uid = loginUserInfoData.getString("uid");
         // 拼接cookie数据
@@ -123,6 +129,9 @@ public class Main {
         JSONObject myActivitiesData = JSONObject.parseObject(myActivitiesJsonString);
         // 获取 我的活动 列表数据
         JSONArray myActivities = myActivitiesData.getJSONArray("data");
+        if (myActivities == null || myActivities.isEmpty()) {
+            return new ArrayList<>();
+        }
 
         // 确认同步最近活动数量
         int endIndex = Math.min(myActivities.size(), Integer.parseInt(ConfigManager.getProperty("sync.recent.activity.count")));
@@ -132,17 +141,12 @@ public class Main {
         // 同步文件名称
         ArrayList<String> syncFileName = new ArrayList<>();
         // 将已经同步的文件过滤
-        List<Object> myActivitieObjectList = myActivities.stream().limit(endIndex).filter(a -> {
-            // 获取 我的活动 数据
-            JSONObject jsonObject = (JSONObject) JSONObject.toJSON(a);
-            // 解析出文件名
-            String fileKey = jsonObject.getString("fileKey");
-            return !list.contains(fileKey);
-        }).collect(Collectors.toList());
+        List<JSONObject> myActivitieObjectList = myActivities.stream().limit(endIndex)
+                .map(a -> (JSONObject) a)
+                .filter(jsonObject -> !list.contains(jsonObject.getString("fileKey")))
+                .collect(Collectors.toList());
         // 循环下载文件
-        for (Object myActivitieObject : myActivitieObjectList) {
-            // 获取 我的活动 数据
-            JSONObject jsonObject = (JSONObject) JSONObject.toJSON(myActivitieObject);
+        for (JSONObject jsonObject : myActivitieObjectList) {
             // 解析出文件名
             String fileKey = jsonObject.getString("fileKey");
             // 解析出下载地址
@@ -150,7 +154,7 @@ public class Main {
             // 创建下载存储文件对象
             File file = new File(ConfigManager.getProperty("onelap.fit.file.storage.directory") + fileKey);
             // 发送下载文件请求
-            HttpClientUtil.doPostJson(durl, file);
+            HttpClientUtil.downloadFile(durl, file);
             syncFileName.add(fileKey);
         }
         return syncFileName;

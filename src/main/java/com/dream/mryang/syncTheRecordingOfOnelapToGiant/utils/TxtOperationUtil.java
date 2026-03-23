@@ -21,23 +21,12 @@ public class TxtOperationUtil {
         // 检查文件是否存在，不存在则创建文件和目录
         testFileExists(file);
 
-        try {
-            // 返回值集合
+        try (BufferedReader bufferedReader = new BufferedReader(new InputStreamReader(new FileInputStream(file), StandardCharsets.UTF_8))) {
             ArrayList<String> respondList = new ArrayList<>();
-            // 文件流对象
-            FileInputStream fileInputStream = new FileInputStream(file);
-            // 文件读取流对象
-            InputStreamReader inputStreamReader = new InputStreamReader(fileInputStream, StandardCharsets.UTF_8);
-            BufferedReader bufferedReader = new BufferedReader(inputStreamReader);
-            // 读取行数据中间变量
             String line;
             while ((line = bufferedReader.readLine()) != null) {
                 respondList.add(line);
             }
-            // 关闭流
-            fileInputStream.close();
-            inputStreamReader.close();
-            // 返回数据对象
             return respondList;
         } catch (Exception e) {
             throw new RuntimeException("读取txt文件异常，请检查后再试", e);
@@ -63,13 +52,13 @@ public class TxtOperationUtil {
             // 将指针移到首行
             raf.seek(0);
             for (String textString : textList) {
-                raf.write(textString.getBytes());
+                raf.write(textString.getBytes(StandardCharsets.UTF_8));
                 // 添加换行
-                raf.write(("\n").getBytes());
+                raf.write("\n".getBytes(StandardCharsets.UTF_8));
             }
             raf.write(originalContent);
         } catch (Exception e) {
-            throw new RuntimeException("数据写入txt文件异常，请检查后再试");
+            throw new RuntimeException("数据写入txt文件异常，请检查后再试", e);
         }
     }
 

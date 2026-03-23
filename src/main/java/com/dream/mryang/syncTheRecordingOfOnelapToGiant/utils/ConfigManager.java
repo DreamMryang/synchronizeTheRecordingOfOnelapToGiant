@@ -22,7 +22,7 @@ public class ConfigManager {
             }
             properties.load(new InputStreamReader(input));
         } catch (IOException ex) {
-            System.out.println("加载配置文件异常" + ex.getMessage());
+            throw new RuntimeException("加载配置文件异常：" + ex.getMessage(), ex);
         }
     }
 
