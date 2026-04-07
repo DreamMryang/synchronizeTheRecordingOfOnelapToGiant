@@ -15,10 +15,18 @@
     </properties>
 
     <dependencies>
+        <!-- Fastjson2 -->
         <dependency>
-            <groupId>com.alibaba</groupId>
-            <artifactId>fastjson</artifactId>
-            <version>1.2.83</version>
+            <groupId>com.alibaba.fastjson2</groupId>
+            <artifactId>fastjson2</artifactId>
+            <version>2.0.43</version>
+        </dependency>
+
+        <!-- Logback for SLF4J -->
+        <dependency>
+            <groupId>ch.qos.logback</groupId>
+            <artifactId>logback-classic</artifactId>
+            <version>1.2.13</version>
         </dependency>
 
         <dependency>
@@ -64,22 +72,26 @@
         <plugins>
             <plugin>
                 <groupId>org.apache.maven.plugins</groupId>
-                <artifactId>maven-shade-plugin</artifactId>
-                <version>3.5.1</version>
+                <artifactId>maven-assembly-plugin</artifactId>
+                <version>3.6.0</version>
                 <configuration>
-                    <transformers>
-                        <transformer
-                                implementation="org.apache.maven.plugins.shade.resource.ManifestResourceTransformer">
+                    <archive>
+                        <manifest>
                             <mainClass>com.dream.mryang.syncTheRecordingOfOnelapToGiant.Main</mainClass>
-                        </transformer>
-                    </transformers>
-                    <createDependencyReducedPom>false</createDependencyReducedPom>
+                        </manifest>
+                    </archive>
+                    <descriptorRefs>
+                        <descriptorRef>jar-with-dependencies</descriptorRef>
+                    </descriptorRefs>
+                    <!-- 设置为 false，使得生成的 fat-jar 覆盖默认的瘦 jar，从而整个 target 目录下只留下这一个可执行包 -->
+                    <appendAssemblyId>false</appendAssemblyId>
                 </configuration>
                 <executions>
                     <execution>
+                        <id>make-assembly</id>
                         <phase>package</phase>
                         <goals>
-                            <goal>shade</goal>
+                            <goal>single</goal>
                         </goals>
                     </execution>
                 </executions>
