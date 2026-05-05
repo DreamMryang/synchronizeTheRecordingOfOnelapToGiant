@@ -1,18 +1,11 @@
 package com.dream.mryang.syncTheRecordingOfOnelapToGiant.utils;
 
-import org.apache.commons.collections4.CollectionUtils;
-import org.apache.commons.lang3.StringUtils;
 import org.apache.http.HttpEntity;
-import org.apache.http.NameValuePair;
 import org.apache.http.client.config.RequestConfig;
-import org.apache.http.client.entity.UrlEncodedFormEntity;
 import org.apache.http.client.methods.CloseableHttpResponse;
 import org.apache.http.client.methods.HttpGet;
 import org.apache.http.client.methods.HttpPost;
 import org.apache.http.client.utils.URIBuilder;
-import org.apache.http.entity.ContentType;
-import org.apache.http.entity.StringEntity;
-import org.apache.http.entity.mime.MultipartEntityBuilder;
 import org.apache.http.impl.client.CloseableHttpClient;
 import org.apache.http.impl.client.HttpClients;
 import org.apache.http.impl.conn.PoolingHttpClientConnectionManager;
@@ -25,14 +18,8 @@ import java.io.FileOutputStream;
 import java.io.IOException;
 import java.net.URI;
 import java.net.URISyntaxException;
-import java.util.HashMap;
-import java.util.List;
 import java.util.Map;
 
-/**
- * @author yang
- * @since 2024/8/29
- **/
 public class HttpClientUtil {
     private static final Logger log = LoggerFactory.getLogger(HttpClientUtil.class);
 
@@ -41,7 +28,6 @@ public class HttpClientUtil {
             .setSocketTimeout(30000)
             .build();
 
-    // 单例的连接池
     private static final PoolingHttpClientConnectionManager CM = new PoolingHttpClientConnectionManager();
     static {
         CM.setMaxTotal(50);
@@ -53,17 +39,11 @@ public class HttpClientUtil {
             .setDefaultRequestConfig(REQUEST_CONFIG)
             .build();
 
-    public static String doPostJson(String url, String json, List<NameValuePair> formParams, MultipartEntityBuilder filesMultipartEntityBuilder, HashMap<String, String> headers) {
+    public static String doPost(String url, HttpEntity entity, Map<String, String> headers) {
         HttpPost httpPost = new HttpPost(url);
         try {
-            if (StringUtils.isNotBlank(json)) {
-                httpPost.setEntity(new StringEntity(json, ContentType.APPLICATION_JSON));
-            }
-            if (CollectionUtils.isNotEmpty(formParams)) {
-                httpPost.setEntity(new UrlEncodedFormEntity(formParams, "UTF-8"));
-            }
-            if (filesMultipartEntityBuilder != null) {
-                httpPost.setEntity(filesMultipartEntityBuilder.build());
+            if (entity != null) {
+                httpPost.setEntity(entity);
             }
             if (headers != null) {
                 for (Map.Entry<String, String> entry : headers.entrySet()) {
@@ -79,18 +59,20 @@ public class HttpClientUtil {
         }
     }
 
-    public static String doGet(String url, Map<String, String> param, String cookie) {
+    public static String doGet(String url, Map<String, String> params, Map<String, String> headers) {
         try {
             URIBuilder builder = new URIBuilder(url);
-            if (param != null) {
-                for (Map.Entry<String, String> entry : param.entrySet()) {
+            if (params != null) {
+                for (Map.Entry<String, String> entry : params.entrySet()) {
                     builder.addParameter(entry.getKey(), entry.getValue());
                 }
             }
             URI uri = builder.build();
             HttpGet httpGet = new HttpGet(uri);
-            if (StringUtils.isNotBlank(cookie)) {
-                httpGet.setHeader("cookie", cookie);
+            if (headers != null) {
+                for (Map.Entry<String, String> entry : headers.entrySet()) {
+                    httpGet.setHeader(entry.getKey(), entry.getValue());
+                }
             }
             try (CloseableHttpResponse response = HTTP_CLIENT.execute(httpGet)) {
                 if (response.getStatusLine().getStatusCode() == 200) {
@@ -105,12 +87,16 @@ public class HttpClientUtil {
         }
     }
 
-    public static void downloadFile(String url, File savePath) {
-        HttpPost httpPost = new HttpPost(url);
+    public static void downloadFile(String url, Map<String, String> headers, File savePath) {
+        HttpGet httpGet = new HttpGet(url);
+        if (headers != null) {
+            for (Map.Entry<String, String> entry : headers.entrySet()) {
+                httpGet.setHeader(entry.getKey(), entry.getValue());
+            }
+        }
         try {
-            try (CloseableHttpResponse response = HTTP_CLIENT.execute(httpPost)) {
-                HttpEntity httpEntity = response.getEntity();
-                byte[] data = EntityUtils.toByteArray(httpEntity);
+            try (CloseableHttpResponse response = HTTP_CLIENT.execute(httpGet)) {
+                byte[] data = EntityUtils.toByteArray(response.getEntity());
                 try (FileOutputStream fos = new FileOutputStream(savePath)) {
                     fos.write(data);
                 }

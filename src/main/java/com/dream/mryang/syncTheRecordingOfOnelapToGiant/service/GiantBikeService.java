@@ -7,6 +7,7 @@ import com.dream.mryang.syncTheRecordingOfOnelapToGiant.utils.SyncConstants;
 import com.dream.mryang.syncTheRecordingOfOnelapToGiant.utils.TxtOperationUtil;
 import org.apache.http.Consts;
 import org.apache.http.NameValuePair;
+import org.apache.http.client.entity.UrlEncodedFormEntity;
 import org.apache.http.entity.ContentType;
 import org.apache.http.entity.mime.MultipartEntityBuilder;
 import org.apache.http.entity.mime.content.StringBody;
@@ -15,6 +16,7 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import java.io.File;
+import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
 import java.util.List;
 
@@ -30,7 +32,8 @@ public class GiantBikeService {
         formParams.add(new BasicNameValuePair("username", ConfigManager.getProperty("giant.username")));
         formParams.add(new BasicNameValuePair("password", ConfigManager.getProperty("giant.password")));
 
-        String loginReturnJsonString = HttpClientUtil.doPostJson(SyncConstants.GIANT_LOGIN_URL, null, formParams, null, null);
+        String loginReturnJsonString = HttpClientUtil.doPost(SyncConstants.GIANT_LOGIN_URL,
+                new UrlEncodedFormEntity(formParams, StandardCharsets.UTF_8), null);
         log.info("调 捷安特骑行登录 接口响应值：{}", loginReturnJsonString);
 
         JSONObject loginReturnData = JSONObject.parseObject(loginReturnJsonString);
@@ -41,17 +44,18 @@ public class GiantBikeService {
             File file = new File(ConfigManager.getProperty("onelap.fit.file.storage.directory") + fitFileName);
             multipartEntityBuilder.addBinaryBody("files[]", file, ContentType.DEFAULT_BINARY, file.getName());
         }
-        ContentType CONTENT_TYPE = ContentType.create("text/plain", Consts.UTF_8);
-        multipartEntityBuilder.addPart("token", new StringBody(userToken, CONTENT_TYPE));
-        multipartEntityBuilder.addPart("device", new StringBody(SyncConstants.GIANT_DEVICE, CONTENT_TYPE));
-        multipartEntityBuilder.addPart("brand", new StringBody(SyncConstants.GIANT_BRAND, CONTENT_TYPE));
+        ContentType textContentType = ContentType.create("text/plain", Consts.UTF_8);
+        multipartEntityBuilder.addPart("token", new StringBody(userToken, textContentType));
+        multipartEntityBuilder.addPart("device", new StringBody(SyncConstants.GIANT_DEVICE, textContentType));
+        multipartEntityBuilder.addPart("brand", new StringBody(SyncConstants.GIANT_BRAND, textContentType));
 
-        String respondJson = HttpClientUtil.doPostJson(SyncConstants.GIANT_UPLOAD_FIT_URL, null, null, multipartEntityBuilder, null);
+        String respondJson = HttpClientUtil.doPost(SyncConstants.GIANT_UPLOAD_FIT_URL, multipartEntityBuilder.build(), null);
         log.info("调 捷安特上传文件 接口响应值：{}", respondJson);
 
         JSONObject respondJsonData = JSONObject.parseObject(respondJson);
         Integer status = respondJsonData.getInteger("status");
         if (status != null && status == 1) {
+            // 已完成同步文件记录持久化
             TxtOperationUtil.writeTxtFile(ConfigManager.getProperty("sync.fit.file.save.path"), fitFileNameList);
             log.info("【完成】同步数量：{}", fitFileNameList.size());
         } else {

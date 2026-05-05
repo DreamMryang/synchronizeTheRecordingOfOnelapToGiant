@@ -51,8 +51,8 @@ public class UploadToOnelapMain {
                         headers.put("cookie", ConfigManager.getProperty("upload.toonelap.cookie"));
 
                         // 调用接口上传文件
-                        String respondJson = HttpClientUtil.doPostJson(SyncConstants.ONELAP_UPLOAD_URL, null, null,
-                                multipartEntityBuilder, headers);
+                        String respondJson = HttpClientUtil.doPost(SyncConstants.ONELAP_UPLOAD_URL,
+                                multipartEntityBuilder.build(), headers);
                         System.out.println("计数：" + count.incrementAndGet() + "，上传响应值：" + respondJson);
 
                         // 上传响应生成的文件名称会重复，存在并发问题，需延时！！！
