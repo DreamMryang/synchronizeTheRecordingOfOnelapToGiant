@@ -2,6 +2,7 @@ package com.dream.mryang.syncTheRecordingOfOnelapToGiant;
 
 import com.dream.mryang.syncTheRecordingOfOnelapToGiant.utils.ConfigManager;
 import com.dream.mryang.syncTheRecordingOfOnelapToGiant.utils.HttpClientUtil;
+import com.dream.mryang.syncTheRecordingOfOnelapToGiant.utils.SyncConstants;
 import org.apache.http.Consts;
 import org.apache.http.entity.ContentType;
 import org.apache.http.entity.mime.MultipartEntityBuilder;
@@ -50,7 +51,7 @@ public class UploadToOnelapMain {
                         headers.put("cookie", ConfigManager.getProperty("upload.toonelap.cookie"));
 
                         // 调用接口上传文件
-                        String respondJson = HttpClientUtil.doPostJson("https://u.onelap.cn/upload/fit", null, null,
+                        String respondJson = HttpClientUtil.doPostJson(SyncConstants.ONELAP_UPLOAD_URL, null, null,
                                 multipartEntityBuilder, headers);
                         System.out.println("计数：" + count.incrementAndGet() + "，上传响应值：" + respondJson);
 
