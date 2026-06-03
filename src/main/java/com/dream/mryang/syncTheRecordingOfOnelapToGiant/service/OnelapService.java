@@ -5,7 +5,8 @@ import com.alibaba.fastjson2.JSONObject;
 import com.dream.mryang.syncTheRecordingOfOnelapToGiant.utils.ConfigManager;
 import com.dream.mryang.syncTheRecordingOfOnelapToGiant.utils.HttpClientUtil;
 import com.dream.mryang.syncTheRecordingOfOnelapToGiant.utils.SyncConstants;
-import com.dream.mryang.syncTheRecordingOfOnelapToGiant.utils.TxtOperationUtil;
+import com.dream.mryang.syncTheRecordingOfOnelapToGiant.db.SyncRecordDao;
+import java.util.Set;
 import org.apache.commons.codec.digest.DigestUtils;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -67,19 +68,25 @@ public class OnelapService {
 
         int endIndex = Math.min(myActivities.size(), Integer.parseInt(ConfigManager.getProperty("sync.recent.activity.count")));
 
-        ArrayList<String> list = TxtOperationUtil.readTxtFile(ConfigManager.getProperty("sync.fit.file.save.path"));
+        Set<String> syncedKeys = SyncRecordDao.findAllFileKeys();
         ArrayList<String> syncFileName = new ArrayList<>();
         List<JSONObject> myActivityObjectList = myActivities.stream().limit(endIndex)
                 .map(a -> (JSONObject) a)
-                .filter(jsonObject -> !list.contains(jsonObject.getString("fileKey")))
+                .filter(jsonObject -> !syncedKeys.contains(jsonObject.getString("fileKey")))
                 .collect(Collectors.toList());
 
         for (JSONObject jsonObject : myActivityObjectList) {
             String fileKey = jsonObject.getString("fileKey");
             String durl = jsonObject.getString("durl");
             File file = new File(ConfigManager.getProperty("onelap.fit.file.storage.directory") + fileKey);
-            HttpClientUtil.downloadFile(durl, file);
-            syncFileName.add(fileKey);
+            try {
+                HttpClientUtil.downloadFile(durl, file);
+                SyncRecordDao.insertDownloaded(fileKey, account, file.length());
+                syncFileName.add(fileKey);
+            } catch (Exception e) {
+                log.error("下载活动文件失败，跳过该条：{}", fileKey, e);
+                SyncRecordDao.markDownloadFailed(fileKey, account, e.getMessage());
+            }
         }
         return syncFileName;
     }
