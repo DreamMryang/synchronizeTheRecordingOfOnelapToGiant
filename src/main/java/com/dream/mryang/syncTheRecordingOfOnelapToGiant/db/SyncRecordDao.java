@@ -154,6 +154,73 @@ public class SyncRecordDao {
         }
     }
 
+    /**
+     * 按 file_key 查询 status，主要供测试/排查用。无记录返回 null。
+     */
+    public static synchronized String findStatus(String fileKey) {
+        ensureInitialized();
+        try (PreparedStatement ps = conn.prepareStatement(
+                "SELECT status FROM sync_record WHERE file_key=?")) {
+            ps.setString(1, fileKey);
+            try (ResultSet rs = ps.executeQuery()) {
+                if (rs.next()) {
+                    return rs.getString("status");
+                }
+            }
+        } catch (SQLException e) {
+            throw new RuntimeException("findStatus 查询失败：" + e.getMessage(), e);
+        }
+        return null;
+    }
+
+    /**
+     * 批量将指定 file_key 标记为 SYNCED。
+     */
+    public static synchronized void markSynced(List<String> fileKeys) {
+        ensureInitialized();
+        if (fileKeys == null || fileKeys.isEmpty()) {
+            return;
+        }
+        long now = System.currentTimeMillis();
+        String sql = "UPDATE sync_record SET status=?, sync_time=?, updated_at=? WHERE file_key=?";
+        try (PreparedStatement ps = conn.prepareStatement(sql)) {
+            for (String key : fileKeys) {
+                ps.setString(1, STATUS_SYNCED);
+                ps.setLong(2, now);
+                ps.setLong(3, now);
+                ps.setString(4, key);
+                ps.addBatch();
+            }
+            ps.executeBatch();
+        } catch (SQLException e) {
+            throw new RuntimeException("markSynced 失败：" + e.getMessage(), e);
+        }
+    }
+
+    /**
+     * 批量将指定 file_key 标记为 UPLOAD_FAILED。
+     */
+    public static synchronized void markUploadFailed(List<String> fileKeys, String errorMsg) {
+        ensureInitialized();
+        if (fileKeys == null || fileKeys.isEmpty()) {
+            return;
+        }
+        long now = System.currentTimeMillis();
+        String sql = "UPDATE sync_record SET status=?, error_msg=?, updated_at=? WHERE file_key=?";
+        try (PreparedStatement ps = conn.prepareStatement(sql)) {
+            for (String key : fileKeys) {
+                ps.setString(1, STATUS_UPLOAD_FAILED);
+                ps.setString(2, errorMsg);
+                ps.setLong(3, now);
+                ps.setString(4, key);
+                ps.addBatch();
+            }
+            ps.executeBatch();
+        } catch (SQLException e) {
+            throw new RuntimeException("markUploadFailed 失败：" + e.getMessage(), e);
+        }
+    }
+
     // ===== 内部工具 =====
 
     private static void ensureInitialized() {

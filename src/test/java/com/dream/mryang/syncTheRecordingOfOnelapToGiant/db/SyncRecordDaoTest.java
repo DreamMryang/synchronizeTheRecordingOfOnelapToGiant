@@ -4,6 +4,7 @@ import org.junit.Before;
 import org.junit.Test;
 
 import java.io.File;
+import java.util.Arrays;
 import java.util.Set;
 
 import static org.junit.Assert.*;
@@ -56,5 +57,23 @@ public class SyncRecordDaoTest {
         SyncRecordDao.markDownloadFailed("activity_002.fit", "testUser", "连接超时");
         Set<String> keys = SyncRecordDao.findAllFileKeys();
         assertTrue("markDownloadFailed 后 findAllFileKeys 应包含该 key", keys.contains("activity_002.fit"));
+    }
+
+    // ===== 测试 5：insertDownloaded 再 markSynced，findStatus == STATUS_SYNCED =====
+    @Test
+    public void testMarkSynced_statusBecomesStatusSynced() {
+        SyncRecordDao.insertDownloaded("activity_003.fit", "testUser", 2048L);
+        SyncRecordDao.markSynced(Arrays.asList("activity_003.fit"));
+        String status = SyncRecordDao.findStatus("activity_003.fit");
+        assertEquals(SyncRecordDao.STATUS_SYNCED, status);
+    }
+
+    // ===== 测试 6：insertDownloaded 再 markUploadFailed，findStatus == STATUS_UPLOAD_FAILED =====
+    @Test
+    public void testMarkUploadFailed_statusBecomesStatusUploadFailed() {
+        SyncRecordDao.insertDownloaded("activity_004.fit", "testUser", 4096L);
+        SyncRecordDao.markUploadFailed(Arrays.asList("activity_004.fit"), "上传接口 500");
+        String status = SyncRecordDao.findStatus("activity_004.fit");
+        assertEquals(SyncRecordDao.STATUS_UPLOAD_FAILED, status);
     }
 }
