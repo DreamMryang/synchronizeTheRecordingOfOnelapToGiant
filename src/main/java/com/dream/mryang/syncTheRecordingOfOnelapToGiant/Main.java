@@ -1,5 +1,6 @@
 package com.dream.mryang.syncTheRecordingOfOnelapToGiant;
 
+import com.dream.mryang.syncTheRecordingOfOnelapToGiant.db.SyncRecordDao;
 import com.dream.mryang.syncTheRecordingOfOnelapToGiant.service.GiantBikeService;
 import com.dream.mryang.syncTheRecordingOfOnelapToGiant.service.OnelapService;
 import com.dream.mryang.syncTheRecordingOfOnelapToGiant.utils.ConfigManager;
@@ -23,6 +24,9 @@ public class Main {
     private static final Logger log = LoggerFactory.getLogger(Main.class);
 
     public static void main(String[] args) throws SchedulerException {
+        // 初始化同步记录数据库（建表）
+        SyncRecordDao.init();
+
         // 创建JobDetail实例
         JobDetail job = JobBuilder.newJob(TaskJob.class).build();
 
