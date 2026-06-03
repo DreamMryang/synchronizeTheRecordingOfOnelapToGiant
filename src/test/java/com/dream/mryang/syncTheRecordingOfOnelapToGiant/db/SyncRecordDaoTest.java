@@ -41,4 +41,20 @@ public class SyncRecordDaoTest {
         Set<String> keys = SyncRecordDao.findAllFileKeys();
         assertNotNull(keys);
     }
+
+    // ===== 测试 3：insertDownloaded 后 findAllFileKeys 含该 key =====
+    @Test
+    public void testInsertDownloaded_fileKeyAppearsInFindAllFileKeys() {
+        SyncRecordDao.insertDownloaded("activity_001.fit", "testUser", 1024L);
+        Set<String> keys = SyncRecordDao.findAllFileKeys();
+        assertTrue("insertDownloaded 后 findAllFileKeys 应包含该 key", keys.contains("activity_001.fit"));
+    }
+
+    // ===== 测试 4：markDownloadFailed 后该 key 也出现在 findAllFileKeys =====
+    @Test
+    public void testMarkDownloadFailed_fileKeyAppearsInFindAllFileKeys() {
+        SyncRecordDao.markDownloadFailed("activity_002.fit", "testUser", "连接超时");
+        Set<String> keys = SyncRecordDao.findAllFileKeys();
+        assertTrue("markDownloadFailed 后 findAllFileKeys 应包含该 key", keys.contains("activity_002.fit"));
+    }
 }

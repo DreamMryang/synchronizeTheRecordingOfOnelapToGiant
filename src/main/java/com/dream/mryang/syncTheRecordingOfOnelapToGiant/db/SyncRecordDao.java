@@ -7,6 +7,7 @@ import org.slf4j.LoggerFactory;
 import java.io.File;
 import java.sql.*;
 import java.util.HashSet;
+import java.util.List;
 import java.util.Set;
 
 /**
@@ -104,6 +105,53 @@ public class SyncRecordDao {
             throw new RuntimeException("findAllFileKeys 查询失败：" + e.getMessage(), e);
         }
         return keys;
+    }
+
+    // ===== 写入 =====
+
+    /**
+     * 插入一条下载成功记录（status=DOWNLOADED）。
+     */
+    public static synchronized void insertDownloaded(String fileKey, String account, long fileSize) {
+        ensureInitialized();
+        long now = System.currentTimeMillis();
+        String sql = "INSERT INTO sync_record" +
+                "(file_key, status, onelap_account, file_size, download_time, created_at, updated_at)" +
+                " VALUES (?, ?, ?, ?, ?, ?, ?)";
+        try (PreparedStatement ps = conn.prepareStatement(sql)) {
+            ps.setString(1, fileKey);
+            ps.setString(2, STATUS_DOWNLOADED);
+            ps.setString(3, account);
+            ps.setLong(4, fileSize);
+            ps.setLong(5, now);
+            ps.setLong(6, now);
+            ps.setLong(7, now);
+            ps.executeUpdate();
+        } catch (SQLException e) {
+            throw new RuntimeException("insertDownloaded 失败：" + e.getMessage(), e);
+        }
+    }
+
+    /**
+     * 插入一条下载失败记录（status=DOWNLOAD_FAILED）。
+     */
+    public static synchronized void markDownloadFailed(String fileKey, String account, String errorMsg) {
+        ensureInitialized();
+        long now = System.currentTimeMillis();
+        String sql = "INSERT INTO sync_record" +
+                "(file_key, status, onelap_account, error_msg, created_at, updated_at)" +
+                " VALUES (?, ?, ?, ?, ?, ?)";
+        try (PreparedStatement ps = conn.prepareStatement(sql)) {
+            ps.setString(1, fileKey);
+            ps.setString(2, STATUS_DOWNLOAD_FAILED);
+            ps.setString(3, account);
+            ps.setString(4, errorMsg);
+            ps.setLong(5, now);
+            ps.setLong(6, now);
+            ps.executeUpdate();
+        } catch (SQLException e) {
+            throw new RuntimeException("markDownloadFailed 失败：" + e.getMessage(), e);
+        }
     }
 
     // ===== 内部工具 =====
