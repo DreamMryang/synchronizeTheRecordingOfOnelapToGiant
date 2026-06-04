@@ -5,7 +5,8 @@ import com.alibaba.fastjson2.JSONObject;
 import com.dream.mryang.syncTheRecordingOfOnelapToGiant.utils.ConfigManager;
 import com.dream.mryang.syncTheRecordingOfOnelapToGiant.utils.HttpClientUtil;
 import com.dream.mryang.syncTheRecordingOfOnelapToGiant.utils.SyncConstants;
-import com.dream.mryang.syncTheRecordingOfOnelapToGiant.utils.TxtOperationUtil;
+import com.dream.mryang.syncTheRecordingOfOnelapToGiant.db.SyncRecordDao;
+import java.util.Set;
 import org.apache.commons.codec.digest.DigestUtils;
 import org.apache.http.entity.ContentType;
 import org.apache.http.entity.StringEntity;
@@ -96,8 +97,8 @@ public class OnelapService {
             return new ArrayList<>();
         }
 
-        // 5. 逐条查询详情并下载未同步的文件
-        ArrayList<String> alreadySynced = TxtOperationUtil.readTxtFile(ConfigManager.getProperty("sync.fit.file.save.path"));
+        // 5. 逐条查询详情并下载未同步的文件（去重键改用 SQLite 记录）
+        Set<String> alreadySynced = SyncRecordDao.findAllFitUrls();
         ArrayList<String> syncFileName = new ArrayList<>();
 
         for (int i = 0; i < myActivities.size(); i++) {
@@ -120,8 +121,14 @@ public class OnelapService {
 
             String fitUrlBase64 = Base64.getEncoder().encodeToString(fitUrl.getBytes(StandardCharsets.UTF_8));
             File file = new File(ConfigManager.getProperty("onelap.fit.file.storage.directory") + fitUrl);
-            HttpClientUtil.downloadFile(SyncConstants.ONELAP_FIT_DOWNLOAD_URL + fitUrlBase64, authHeaders, file);
-            syncFileName.add(fitUrl);
+            try {
+                HttpClientUtil.downloadFile(SyncConstants.ONELAP_FIT_DOWNLOAD_URL + fitUrlBase64, authHeaders, file);
+                SyncRecordDao.insertDownloaded(fitUrl, account, file.length());
+                syncFileName.add(fitUrl);
+            } catch (Exception e) {
+                log.error("下载活动文件失败，跳过该条：{}", fitUrl, e);
+                SyncRecordDao.markDownloadFailed(fitUrl, account, e.getMessage());
+            }
         }
 
         return syncFileName;
