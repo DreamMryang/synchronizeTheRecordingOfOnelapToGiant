@@ -473,61 +473,43 @@ chmod 755 /path/to/storage/
 
 ## 问题与改进建议
 
-### 已发现问题汇总
+### 已解决的历史问题
+
+1. **硬编码签名密钥**：已移至配置文件`onelap.sign.key`
+2. **HTTP客户端问题**：已重构为按`HttpEntity`类型统一的`doPost`/`doGet`/`downloadFile`方法，全部使用try-with-resources，配置了连接池与超时
+3. **文件下载缺少认证**：下载FIT文件时已传递`Authorization`头
+4. **同步记录去重与原子性**：TXT记录已迁移到SQLite，`fit_url`唯一键去重，写入具备事务原子性
+5. **Quartz并发问题**：已加`@DisallowConcurrentExecution`
+6. **失败无痕迹**：下载/上传失败均写入SQLite（`DOWNLOAD_FAILED`/`UPLOAD_FAILED`），单条下载失败不再中断整个任务
+7. **测试缺失**：`SyncRecordDao`已有JUnit单元测试覆盖
+8. **API端点分散**：外部接口地址已集中到`SyncConstants`常量类
+
+### 仍存在的问题
 
 #### 一、安全性问题
-1. **硬编码签名密钥**：签名密钥`fe9f8382418fcdeb136461cac6acae7b`硬编码在源代码中
-2. **MD5哈希算法使用**：存在碰撞漏洞风险
-3. **明文密码存储**：配置文件中密码明文存储
-4. **敏感信息日志输出**：完整API响应输出到控制台
+1. **MD5哈希算法使用**：受限于对方接口协议，暂无法更换
+2. **明文密码存储**：配置文件中密码明文存储
+3. **敏感信息日志输出**：完整API响应输出到日志
 
-#### 二、代码质量问题
-1. **方法命名与实际功能不符**：HttpClientUtil.doPostJson处理多种内容类型
-2. **异常处理不完善**：仅打印异常信息，缺乏错误恢复机制
-3. **资源管理问题**：HTTP连接未完全关闭（缺少try-with-resources）
-4. **代码重复**：相同逻辑在多处重复出现
+#### 二、功能逻辑问题
+1. **上传响应处理简单**：仅检查status==1，整批统一标记成败，无单文件粒度结果
+2. **失败不自动重试**：失败记录需人工介入处理（设计取舍，非缺陷）
 
-#### 三、功能逻辑问题
-1. **文件下载缺少认证**：下载请求未传递认证信息
-2. **文件写入逻辑可能重复**：未实现去重机制
-3. **并发问题**：Quartz作业可能并发执行
-4. **上传响应处理简单**：仅检查status==1，处理不够完善
-
-#### 四、配置管理问题
-1. **跨平台路径问题**：配置文件中混合Windows和Linux路径格式
-2. **缺少配置验证**：配置属性为空时抛出运行时异常
-3. **配置项命名不一致**：命名风格不统一
-
-#### 五、性能与可靠性问题
-1. **网络请求无超时设置**：可能导致线程长时间阻塞
-2. **文件操作无缓冲策略**：大文件处理性能较差
-3. **硬编码延时**：固定2秒延时处理并发问题
-
-#### 六、扩展性与维护性问题
-1. **硬编码API端点**：API变更需要修改代码
-2. **缺乏监控和告警**：无任务执行统计和异常告警
-3. **测试覆盖率不足**：缺少单元测试和集成测试
-4. **文档缺失**：API接口变更记录和运维文档不完整
+#### 三、配置与部署问题
+1. **配置固化在jar内**：修改配置需重新打包
+2. **硬编码延时**：反向上传工具固定2秒延时处理服务端并发问题
 
 ### 改进建议
 
-#### 短期建议（高优先级）
-1. **移除硬编码签名密钥**：将密钥移至配置文件，支持动态更新
-2. **增强异常处理**：实现重试机制，添加详细错误日志
-3. **修复资源泄漏**：使用try-with-resources确保HTTP响应正确关闭
-4. **添加配置验证**：启动时验证所有必需配置，提供清晰错误信息
-5. **改进文件下载认证**：下载FIT文件时传递必要的认证信息
-
 #### 中期建议（中优先级）
-1. **重构HTTP客户端**：分离不同内容类型的处理方法，添加连接池配置
-2. **增强安全性**：配置文件中密码加密存储，敏感信息日志脱敏
-3. **改进文件同步逻辑**：实现原子性文件操作，添加文件去重机制
-4. **添加监控和日志**：结构化日志输出，关键指标监控
+1. **增强安全性**：配置文件中密码加密存储，敏感信息日志脱敏
+2. **配置外置化**：支持从jar外部路径加载config.properties，免去改配置重新打包
+3. **添加监控和告警**：任务执行统计、失败记录告警
 
 #### 长期建议（低优先级）
-1. **架构优化**：考虑使用数据库替代TXT文件记录，支持多人同步
-2. **测试体系建设**：添加单元测试和集成测试，实现持续集成
-3. **部署和运维改进**：容器化部署，配置中心集成
+1. **失败重试策略**：为失败记录提供受控的重试机制或管理命令
+2. **测试体系建设**：扩大测试覆盖（服务层）、实现持续集成
+3. **部署和运维改进**：容器化部署
 
 ---
 
@@ -538,9 +520,11 @@ chmod 755 /path/to/storage/
 #### 顽鹿运动相关接口
 | 接口 | 地址 | 方法 | 用途 |
 |------|------|------|------|
-| 本人登录 | https://www.onelap.cn/api/login | POST | 获取认证令牌 |
-| 活动列表 | https://u.onelap.cn/analysis/list | GET | 获取骑行活动列表 |
-| 文件下载 | 从活动列表获取 | POST | 下载FIT文件 |
+| 本人登录 | https://www.onelap.cn/api/login | POST | 获取认证令牌（需nonce/timestamp/sign签名头） |
+| 活动列表 | https://u.onelap.cn/api/otm/ride_record/list | POST | 按日期范围分页获取骑行活动列表 |
+| 活动详情 | https://u.onelap.cn/api/otm/ride_record/analysis/{id} | GET | 获取活动详情（含fitUrl） |
+| 文件下载 | https://u.onelap.cn/api/otm/ride_record/analysis/fit_content/{fitUrl的Base64} | GET | 下载FIT文件 |
+| 文件上传 | https://u.onelap.cn/upload/fit | POST | 反向上传FIT文件（需页面token/cookie） |
 
 #### 捷安特骑行相关接口
 | 接口 | 地址 | 方法 | 用途 |
@@ -558,8 +542,12 @@ mvn clean compile
 # 打包可执行JAR
 mvn package
 
+# 运行全部测试 / 单个测试类
+mvn test
+mvn test -Dtest=SyncRecordDaoTest
+
 # 运行程序
-java -jar target/syncTheRecordingOfOnelapToGiant.jar
+java -jar target/synchronizeTheRecordingOfOnelapToGiant-1.0.0.jar
 ```
 
 #### Git操作命令
@@ -578,12 +566,13 @@ git push origin v1.0.0
 ### 参考资料
 - [Quartz Scheduler官方文档](http://www.quartz-scheduler.org/documentation/)
 - [Apache HttpClient本人指南](https://hc.apache.org/httpcomponents-client-ga/)
-- [FastJSON使用手册](https://github.com/alibaba/fastjson)
+- [Fastjson2使用手册](https://github.com/alibaba/fastjson2)
+- [SQLite JDBC (xerial)](https://github.com/xerial/sqlite-jdbc)
 - [Cron表达式在线生成器](https://www.freeformatter.com/cron-expression-generator-quartz.html)
 
 ---
 
-**文档版本**：v1.0  
-**最后更新**：2026年3月  
+**文档版本**：v1.1  
+**最后更新**：2026年7月  
 **维护者**：yang.yang  
 **项目状态**：稳定运行中
