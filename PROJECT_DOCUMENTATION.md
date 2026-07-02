@@ -28,9 +28,9 @@
 
 ### 核心价值
 - ✅ **自动化同步**：无需人工干预，定时自动完成数据同步
-- ✅ **防重复机制**：通过TXT文件记录避免重复同步相同文件
+- ✅ **防重复机制**：通过SQLite中`fit_url`唯一键避免重复同步相同文件
 - ✅ **双向支持**：支持Onelap→Giant正向同步和本地文件上传到Onelap的反向功能
-- ✅ **轻量化设计**：无需数据库，使用简单的TXT文件进行状态管理
+- ✅ **轻量化设计**：使用嵌入式SQLite（sqlite-jdbc）做状态管理，无需外部数据库服务
 
 ---
 
@@ -42,25 +42,37 @@
 | Java | 8 | 核心开发语言 |
 | Maven | 3.x | 项目构建和依赖管理 |
 | Quartz Scheduler | 2.3.2 | 定时任务调度 |
-| Apache HttpClient | 4.5.14 | HTTP客户端请求 |
-| FastJSON | 1.2.83 | JSON数据解析 |
+| Apache HttpClient (httpmime) | 4.5.14 | HTTP客户端请求 |
+| Fastjson2 | 2.0.43 | JSON数据解析 |
+| SQLite JDBC (xerial) | 3.45.3.0 | 嵌入式同步记录数据库 |
+| Logback | 1.2.13 | 日志输出（控制台+按天滚动文件） |
 | Apache Commons Lang3 | 3.18.0 | 字符串和通用工具类 |
 | Apache Commons Collections4 | 4.4 | 集合操作工具类 |
+| JUnit | 4.13.1 | 单元测试 |
 
 ### 项目结构
 ```
 synchronizeTheRecordingOfOnelapToGiant/
 ├── src/
-│   └── main/
-│       ├── java/com/dream/mryang/syncTheRecordingOfOnelapToGiant/
-│       │   ├── Main.java                          # 主程序入口和定时任务
-│       │   ├── UploadToOnelapMain.java            # 反向上传工具
-│       │   └── utils/                             # 工具类包
-│       │       ├── ConfigManager.java             # 配置管理器
-│       │       ├── HttpClientUtil.java            # HTTP客户端工具
-│       │       └── TxtOperationUtil.java          # TXT文件操作工具
-│       └── resources/
-│           └── config.properties                  # 配置文件
+│   ├── main/
+│   │   ├── java/com/dream/mryang/syncTheRecordingOfOnelapToGiant/
+│   │   │   ├── Main.java                          # 主程序入口和定时任务
+│   │   │   ├── UploadToOnelapMain.java            # 反向上传工具
+│   │   │   ├── service/                           # 业务服务包
+│   │   │   │   ├── OnelapService.java             # 顽鹿运动：登录/列表/详情/下载
+│   │   │   │   └── GiantBikeService.java          # 捷安特骑行：登录/批量上传
+│   │   │   ├── db/
+│   │   │   │   └── SyncRecordDao.java             # SQLite同步记录数据访问层
+│   │   │   └── utils/                             # 工具类包
+│   │   │       ├── ConfigManager.java             # 配置管理器
+│   │   │       ├── HttpClientUtil.java            # HTTP客户端工具（连接池+超时）
+│   │   │       └── SyncConstants.java             # 外部接口地址等常量
+│   │   └── resources/
+│   │       ├── config.properties                  # 配置文件
+│   │       └── logback.xml                        # 日志配置
+│   └── test/
+│       └── java/.../db/SyncRecordDaoTest.java     # SyncRecordDao单元测试
+├── docs/                                          # 设计文档（SQLite同步记录设计等）
 ├── target/                                        # 编译输出目录
 ├── pom.xml                                        # Maven配置文件
 ├── README.md                                      # 项目说明文档
@@ -83,8 +95,8 @@ synchronizeTheRecordingOfOnelapToGiant/
 │                        服务层 (Service Layer)                    │
 ├─────────────────────────────────────────────────────────────────┤
 │  ┌──────────────────┐    ┌──────────────────┐    ┌────────────┐ │
-│  │  同步服务逻辑    │    │  文件管理服务    │    │ 配置服务   │ │
-│  │ (业务流程控制)   │    │ (读写操作)       │    │ (参数管理) │ │
+│  │  OnelapService   │    │ GiantBikeService │    │SyncRecordDao│ │
+│  │ (下载FIT文件)    │    │ (批量上传FIT)    │    │(SQLite记录)│ │
 │  └──────────────────┘    └──────────────────┘    └────────────┘ │
 └─────────────────────────────────────────────────────────────────┘
                                 │
@@ -93,8 +105,8 @@ synchronizeTheRecordingOfOnelapToGiant/
 │                        工具层 (Utility Layer)                    │
 ├─────────────────────────────────────────────────────────────────┤
 │  ┌──────────────────┐    ┌──────────────────┐    ┌────────────┐ │
-│  │ HttpClientUtil   │    │ TxtOperationUtil │    │ConfigManager│ │
-│  │ (HTTP客户端)     │    │ (文件操作)       │    │ (配置管理) │ │
+│  │ HttpClientUtil   │    │  SyncConstants   │    │ConfigManager│ │
+│  │ (HTTP客户端)     │    │ (接口地址常量)   │    │ (配置管理) │ │
 │  └──────────────────┘    └──────────────────┘    └────────────┘ │
 └─────────────────────────────────────────────────────────────────┘
                                 │
@@ -131,10 +143,11 @@ synchronizeTheRecordingOfOnelapToGiant/
 - 批量上传FIT文件
 - 响应状态验证
 
-### 4. 重复同步防护
-- 使用TXT文件记录已同步的文件名
-- 同步前过滤已存在的记录
-- 避免重复下载和上传
+### 4. 重复同步防护与生命周期记录
+- 使用SQLite单表`sync_record`记录，`fit_url`唯一键做去重
+- 记录完整状态：`DOWNLOADED` / `SYNCED` / `UPLOAD_FAILED` / `DOWNLOAD_FAILED`
+- 凡`fit_url`已有任意记录（含失败态）即跳过，失败不自动重试，需人工介入
+- 下载阶段单条失败只记录、不中断整个任务
 
 ### 5. 反向上传功能
 - 支持将本地FIT文件上传到顽鹿运动
@@ -149,9 +162,9 @@ synchronizeTheRecordingOfOnelapToGiant/
 
 #### 1. 主程序类 (Main.java)
 **功能职责：**
-- 初始化Quartz调度器
-- 配置双Cron表达式定时任务
-- 实现完整的同步业务逻辑
+- 启动时初始化SQLite同步记录库（`SyncRecordDao.init()`建库建表）
+- 初始化Quartz调度器，配置双Cron表达式定时任务（`@DisallowConcurrentExecution`禁止并发执行）
+- 任务体串联`OnelapService`下载与`GiantBikeService`上传
 
 **关键特性：**
 ```java
@@ -172,20 +185,17 @@ Trigger trigger2 = TriggerBuilder.newTrigger()
 - 统一的配置访问接口
 
 #### 3. HTTP客户端工具 (HttpClientUtil.java)
-**多功能方法设计：**
-```java
-// 统一的POST请求方法，支持多种参数类型
-public static String doPostJson(String url, String json, 
-                               List<NameValuePair> formParams, 
-                               MultipartEntityBuilder filesMultipartEntityBuilder, 
-                               HashMap<String, String> headers)
-```
+**设计要点：**
+- 单例`CloseableHttpClient` + `PoolingHttpClientConnectionManager`连接池（maxTotal=50，每路由10）
+- 统一超时配置：连接10秒、socket 30秒
+- 提供`doPost`（接收任意`HttpEntity`：JSON/表单/multipart）、`doGet`、`downloadFile`三类方法
 
-#### 4. 文件操作工具 (TxtOperationUtil.java)
-**文件管理策略：**
-- 自动创建不存在的文件和目录
-- 新记录插入文件开头（类似栈结构）
-- 支持大文件的安全读写操作
+#### 4. 同步记录数据访问层 (SyncRecordDao.java)
+**设计要点：**
+- SQLite常驻单连接 + WAL模式，所有公开方法`synchronized`保证线程安全
+- 单表`sync_record`，`fit_url`唯一键做去重
+- 提供`init`/`findAllFitUrls`/`insertDownloaded`/`markDownloadFailed`/`markSynced`/`markUploadFailed`等方法
+- 详细设计见 `docs/superpowers/specs/2026-06-03-sqlite-sync-record-design.md`
 
 ### 业务流程详解
 
@@ -211,13 +221,13 @@ graph TD
 
 ##### 步骤1：顽鹿运动登录认证
 ```java
-// 签名计算（注意：签名密钥硬编码在代码中）
+// 签名计算（签名密钥从配置文件 onelap.sign.key 读取）
 String sign = DigestUtils.md5Hex(
-    "account=" + account + 
-    "&nonce=" + nonce + 
-    "&password=" + md5Password +
-    "&timestamp=" + timestamp + 
-    "&key=" + "fe9f8382418fcdeb136461cac6acae7b"
+    "account=" + account +
+    "&nonce=" + nonce +
+    "&password=" + passwordParam +
+    "&timestamp=" + timestamp +
+    "&key=" + ConfigManager.getProperty("onelap.sign.key")
 );
 
 // 请求头封装
@@ -228,24 +238,22 @@ headers.put("sign", sign);
 
 ##### 步骤2：活动列表获取与过滤
 ```java
-// 限制同步最近N条记录
-int endIndex = Math.min(myActivities.size(), 
-                       Integer.parseInt(ConfigManager.getProperty("sync.recent.activity.count")));
+// 按日期范围查询最近 sync.recent.days 天的活动：先查一次拿 total，
+// 再用 total 作为 limit 一次性取回全部列表
 
-// 过滤已同步文件
-List<Object> filteredActivities = myActivities.stream()
-    .limit(endIndex)
-    .filter(activity -> {
-        String fileKey = ((JSONObject) activity).getString("fileKey");
-        return !syncedFiles.contains(fileKey);
-    })
-    .collect(Collectors.toList());
+// 用 SQLite 中全部已记录的 fit_url 做去重（含失败态记录，一律跳过）
+Set<String> alreadySynced = SyncRecordDao.findAllFitUrls();
+if (alreadySynced.contains(fitUrl)) {
+    continue;
+}
 ```
 
 ##### 步骤3：文件下载与存储
 ```java
-// 文件下载（注意：此处缺少认证信息）
-HttpClientUtil.doPostJson(durl, file);
+// 携带 Authorization 头下载FIT文件；fitUrl 需 Base64 编码后拼接到下载地址
+HttpClientUtil.downloadFile(SyncConstants.ONELAP_FIT_DOWNLOAD_URL + fitUrlBase64, authHeaders, file);
+// 成功记 DOWNLOADED，失败记 DOWNLOAD_FAILED 并继续处理下一条
+SyncRecordDao.insertDownloaded(fitUrl, account, file.length());
 ```
 
 ##### 步骤4：捷安特平台上传
@@ -274,14 +282,20 @@ onelap.password=your_password
 giant.username=your_username
 giant.password=your_password
 
+# 顽鹿运动接口签名密钥（固定值）
+onelap.sign.key=fe9f8382418fcdeb136461cac6acae7b
+
 # 同步策略配置
-sync.recent.activity.count=60           # 同步最近60条活动记录
+sync.recent.days=30                     # 同步最近30天的活动记录
 onelap.fit.file.storage.directory=/path/to/storage/
-sync.fit.file.save.path=/path/to/record.txt
+sync.db.path=/path/to/sync_record.db    # SQLite同步记录库文件路径
 
 # 定时任务配置
 sync.cronone.expression=0 0 0/6 * * ?   # 每6小时执行
 sync.crontwo.expression=0 0/15 8-9 * * ? # 早8-9点每15分钟执行
+
+# 日志文件存储路径（被logback.xml引用）
+log.file.path=/path/to/logs/
 ```
 
 #### 反向上传配置
@@ -328,8 +342,11 @@ giant.password=你的捷安特密码
 
 # 存储路径配置（根据系统调整）
 onelap.fit.file.storage.directory=/path/to/storage/
-sync.fit.file.save.path=/path/to/record.txt
+sync.db.path=/path/to/sync_record.db
+log.file.path=/path/to/logs/
 ```
+
+注意：配置文件位于`src/main/resources/`，打包后固化在jar内，修改配置需重新打包。
 
 #### 3. 构建运行
 ```bash
@@ -337,19 +354,18 @@ sync.fit.file.save.path=/path/to/record.txt
 mvn clean package
 
 # 运行程序
-java -jar target/syncTheRecordingOfOnelapToGiant.jar
+java -jar target/synchronizeTheRecordingOfOnelapToGiant-1.0.0.jar
 ```
 
 ### 目录结构规划
 ```
 /sync-app/
 ├── bin/                    # 可执行JAR文件
-├── config/                 # 配置文件目录
 ├── logs/                   # 日志文件目录
 ├── data/                   # 数据存储目录
+│   ├── sync_record.db      # SQLite同步记录库（程序自动创建）
 │   └── onelapFitFileStorageDirecotry/
-│       ├── syncFitFileSaveFile.txt     # 同步记录文件
-│       └── *.fit                       # 下载的FIT文件
+│       └── *.fit           # 下载的FIT文件
 └── backup/                 # 备份目录
 ```
 
@@ -405,28 +421,26 @@ chmod 755 /path/to/storage/
 #### 1. 签名认证机制
 - 顽鹿运动登录采用签名认证
 - 签名包含随机nonce、时间戳等防重放攻击要素
-- 但签名密钥硬编码在源代码中
+- 签名密钥已配置化（`onelap.sign.key`，接口要求的固定值）
 
 #### 2. 配置隔离
 - 敏感信息集中存储在配置文件中
-- 配置文件不提交到版本控制系统
-- 运行时验证配置完整性
+- 仓库中账号密码字段留空，本地填入真实凭据后注意不要提交
+- 运行时验证配置完整性（缺失或空值直接抛异常）
 
 ### 已识别安全风险
 
 | 风险类型 | 当前状态 | 建议改进 |
 |----------|----------|----------|
-| 硬编码密钥 | ⚠️ 存在风险 | 应将密钥移至配置文件 |
-| MD5算法使用 | ⚠️ 存在风险 | 建议升级到SHA-256 |
+| MD5算法使用 | ⚠️ 存在风险（接口协议要求） | 受限于对方接口，暂无法更换 |
 | 明文密码存储 | ⚠️ 存在风险 | 建议加密存储 |
 | 敏感信息日志 | ⚠️ 存在风险 | 生产环境应脱敏 |
 
 ### 安全改进建议
 
 #### 短期改进（高优先级）
-1. **移除硬编码签名密钥**：将密钥移至配置文件，支持动态更新
-2. **密码加密存储**：使用AES等加密算法存储敏感信息
-3. **日志脱敏处理**：敏感信息输出时进行脱敏处理
+1. **密码加密存储**：使用AES等加密算法存储敏感信息
+2. **日志脱敏处理**：敏感信息输出时进行脱敏处理
 
 #### 中长期规划
 1. 集成配置中心（如Apollo、Nacos）
@@ -438,54 +452,22 @@ chmod 755 /path/to/storage/
 
 ## 性能优化
 
-### 当前性能瓶颈
+### 已落地的优化
 
-#### 1. 网络请求优化
-**现状：**
-- 使用默认HttpClient配置
-- 无连接池和超时设置
-- 串行处理所有文件下载
+#### 1. 网络请求
+- `HttpClientUtil`使用单例连接池（maxTotal=50，每路由10）
+- 统一超时设置：连接10秒、socket 30秒
 
-**优化建议：**
-```java
-// 配置连接池
-PoolingHttpClientConnectionManager cm = new PoolingHttpClientConnectionManager();
-cm.setMaxTotal(20);
-cm.setDefaultMaxPerRoute(10);
-
-// 设置超时
-RequestConfig config = RequestConfig.custom()
-    .setConnectTimeout(5000)
-    .setSocketTimeout(30000)
-    .build();
-```
-
-#### 2. 文件操作优化
-**现状：**
-- TXT文件读写使用基础IO
-- 大文件处理效率较低
-
-**优化方向：**
-```java
-// 使用BufferedReader/Writer提升性能
-try (BufferedReader reader = Files.newBufferedReader(path, charset)) {
-    // 高效读取...
-}
-```
+#### 2. 同步记录存储
+- 已由TXT文件迁移到SQLite：`fit_url`唯一索引去重（替代原O(n)线性扫描），写入具备事务原子性
 
 #### 3. 并发控制
-**当前问题：**
-- Quartz默认允许多实例并发执行
-- 文件读写可能存在竞争条件
+- `TaskJob`已加`@DisallowConcurrentExecution`禁止Quartz并发执行
+- `SyncRecordDao`所有公开方法`synchronized`，单连接+WAL模式
 
-**改进方案：**
-```java
-// 禁止并发执行
-@DisallowConcurrentExecution
-public class TaskJob implements Job {
-    // 任务实现...
-}
-```
+### 遗留优化方向
+- 文件下载仍为串行处理，量大时可考虑并行化
+- 反向上传工具中固定2秒延时规避服务端并发问题，较为粗糙
 
 ---
 
