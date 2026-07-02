@@ -47,6 +47,17 @@ class CredentialStoreTest {
     }
 
     @Test
+    fun `保存捷安特账号只清捷安特 token`() {
+        tokenStore.set(Platform.ONELAP, "t1")
+        tokenStore.set(Platform.GIANT, "t2")
+        store.saveGiant("user", "pwd")
+        assertNull(tokenStore.get(Platform.GIANT))
+        assertEquals("t1", tokenStore.get(Platform.ONELAP))
+        assertEquals("user", store.giantUsername)
+        assertEquals("pwd", store.giantPassword)
+    }
+
+    @Test
     fun `四项齐全才算已配置且 configured 流同步更新`() {
         assertFalse(store.isConfigured())
         assertFalse(store.configured.value)
