@@ -1,0 +1,96 @@
+package com.dreammryang.onelaptogiant.data.db
+
+import android.content.Context
+import androidx.room.Room
+import androidx.test.core.app.ApplicationProvider
+import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.test.runTest
+import org.junit.After
+import org.junit.Assert.assertEquals
+import org.junit.Assert.assertNotNull
+import org.junit.Assert.assertNull
+import org.junit.Before
+import org.junit.Test
+import org.junit.runner.RunWith
+import org.robolectric.RobolectricTestRunner
+
+@RunWith(RobolectricTestRunner::class)
+class SyncDaoTest {
+    private lateinit var db: AppDatabase
+
+    @Before
+    fun setup() {
+        val context = ApplicationProvider.getApplicationContext<Context>()
+        db = Room.inMemoryDatabaseBuilder(context, AppDatabase::class.java)
+            .allowMainThreadQueries()
+            .build()
+    }
+
+    @After
+    fun teardown() = db.close()
+
+    private fun session(status: SessionStatus = SessionStatus.RUNNING) = SyncSessionEntity(
+        triggerType = TriggerType.AUTO, status = status, startedAt = 1000L,
+    )
+
+    private fun record(fitUrl: String, sessionId: Long, status: RecordStatus) = SyncRecordEntity(
+        fitUrl = fitUrl, sessionId = sessionId, status = status,
+        createdAt = 1000L, updatedAt = 1000L,
+    )
+
+    @Test
+    fun `会话插入更新与倒序查询`() = runTest {
+        val id1 = db.sessionDao().insert(session())
+        val id2 = db.sessionDao().insert(session().copy(startedAt = 2000L))
+
+        val s1 = db.sessionDao().getById(id1)!!
+        db.sessionDao().update(s1.copy(status = SessionStatus.SUCCESS, finishedAt = 1500L, syncedCount = 3))
+
+        val all = db.sessionDao().observeAll().first()
+        assertEquals(listOf(id2, id1), all.map { it.id })
+        assertEquals(SessionStatus.SUCCESS, all[1].status)
+        assertEquals(3, all[1].syncedCount)
+    }
+
+    @Test
+    fun `observeLatestFinished 跳过 RUNNING 会话`() = runTest {
+        assertNull(db.sessionDao().observeLatestFinished().first())
+        val id1 = db.sessionDao().insert(session(SessionStatus.SUCCESS))
+        db.sessionDao().insert(session(SessionStatus.RUNNING).copy(startedAt = 9999L))
+        assertEquals(id1, db.sessionDao().observeLatestFinished().first()?.id)
+    }
+
+    @Test
+    fun `记录按 fitUrl 查询与状态更新`() = runTest {
+        val sid = db.sessionDao().insert(session())
+        db.recordDao().insert(record("a.fit", sid, RecordStatus.DOWNLOADED))
+
+        val found = db.recordDao().getByFitUrl("a.fit")
+        assertNotNull(found)
+        db.recordDao().update(found!!.copy(status = RecordStatus.SYNCED, syncTime = 2000L))
+        assertEquals(RecordStatus.SYNCED, db.recordDao().getByFitUrl("a.fit")!!.status)
+        assertNull(db.recordDao().getByFitUrl("missing.fit"))
+    }
+
+    @Test
+    fun `getReconcilable 只返回 SYNCED 与 UPLOAD_FAILED`() = runTest {
+        val sid = db.sessionDao().insert(session())
+        db.recordDao().insert(record("a.fit", sid, RecordStatus.SYNCED))
+        db.recordDao().insert(record("b.fit", sid, RecordStatus.UPLOAD_FAILED))
+        db.recordDao().insert(record("c.fit", sid, RecordStatus.DOWNLOAD_FAILED))
+        db.recordDao().insert(record("d.fit", sid, RecordStatus.PROCESS_FAILED))
+
+        assertEquals(setOf("a.fit", "b.fit"), db.recordDao().getReconcilable().map { it.fitUrl }.toSet())
+    }
+
+    @Test
+    fun `按会话查记录与处理失败计数`() = runTest {
+        val sid1 = db.sessionDao().insert(session())
+        val sid2 = db.sessionDao().insert(session())
+        db.recordDao().insert(record("a.fit", sid1, RecordStatus.PROCESS_FAILED))
+        db.recordDao().insert(record("b.fit", sid2, RecordStatus.SYNCED))
+
+        assertEquals(listOf("a.fit"), db.recordDao().observeBySession(sid1).first().map { it.fitUrl })
+        assertEquals(1, db.recordDao().observeProcessFailedCount().first())
+    }
+}
