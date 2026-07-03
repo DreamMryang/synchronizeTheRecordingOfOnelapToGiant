@@ -1,3 +1,5 @@
+import java.util.Properties
+
 plugins {
     alias(libs.plugins.android.application)
     alias(libs.plugins.kotlin.android)
@@ -5,6 +7,15 @@ plugins {
     alias(libs.plugins.kotlin.serialization)
     alias(libs.plugins.ksp)
 }
+
+// release 签名信息来自 local.properties（不入库）；密钥文件在工程根 keystore/（已被 android/.gitignore 排除）
+val localProperties = Properties().apply {
+    val file = rootProject.file("local.properties")
+    if (file.exists()) file.inputStream().use { load(it) }
+}
+val releaseKeystoreFile = rootProject.file("keystore/release-keystore.jks")
+val hasReleaseSigning = releaseKeystoreFile.exists() &&
+    localProperties.getProperty("KEYSTORE_STORE_PASSWORD") != null
 
 android {
     namespace = "com.dreammryang.onelaptogiant"
@@ -18,9 +29,22 @@ android {
         versionName = "1.0"
     }
 
+    signingConfigs {
+        if (hasReleaseSigning) {
+            create("release") {
+                storeFile = releaseKeystoreFile
+                storePassword = localProperties.getProperty("KEYSTORE_STORE_PASSWORD")
+                keyAlias = localProperties.getProperty("KEYSTORE_KEY_ALIAS")
+                keyPassword = localProperties.getProperty("KEYSTORE_KEY_PASSWORD")
+            }
+        }
+    }
+
     buildTypes {
         release {
             isMinifyEnabled = false
+            // 缺密钥/密码的环境（如他人机器）自动退化为未签名 release，不阻断构建
+            signingConfig = signingConfigs.findByName("release")
         }
     }
     compileOptions {
