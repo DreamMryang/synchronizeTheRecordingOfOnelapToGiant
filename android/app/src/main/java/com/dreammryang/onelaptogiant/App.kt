@@ -17,6 +17,10 @@ class App : Application() {
         Timber.plant(Timber.DebugTree())
         container = AppContainer(this)
 
+        // Robolectric 下跳过后台初始化：真库写入会在全局 arch_disk_io 线程留下
+        // InvalidationTracker 刷新任务，测试类环境切换后触发已关连接异常（测试并不需要这些副作用）
+        if (android.os.Build.FINGERPRINT == "robolectric") return
+
         val bgScope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
         bgScope.launch {
             try {

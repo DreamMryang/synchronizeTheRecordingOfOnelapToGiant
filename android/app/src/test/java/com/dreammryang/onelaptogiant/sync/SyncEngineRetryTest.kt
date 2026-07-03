@@ -67,7 +67,11 @@ class SyncEngineRetryTest {
     fun setup() {
         val context = ApplicationProvider.getApplicationContext<Context>()
         db = Room.inMemoryDatabaseBuilder(context, AppDatabase::class.java)
-            .allowMainThreadQueries().build()
+            .allowMainThreadQueries()
+            // 直接执行器：让 InvalidationTracker 刷新同步执行，避免 @After 关库后台竞态泄漏未捕获异常
+            .setQueryExecutor { it.run() }
+            .setTransactionExecutor { it.run() }
+            .build()
         val prefs = context.getSharedPreferences("test_retry", Context.MODE_PRIVATE)
         prefs.edit().clear().commit()
         val tokenStore = TokenStore(prefs)
