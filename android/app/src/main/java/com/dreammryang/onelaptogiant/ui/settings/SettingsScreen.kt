@@ -46,8 +46,35 @@ fun SettingsScreen(viewModel: SettingsViewModel) {
     val snackbarHostState = remember { SnackbarHostState() }
     var editingPlatform by remember { mutableStateOf<CredentialPlatform?>(null) }
 
+    var showClearHistoryDialog by remember { mutableStateOf(false) }
+
     LaunchedEffect(Unit) {
         viewModel.saved.collect { snackbarHostState.showSnackbar("已保存") }
+    }
+
+    LaunchedEffect(Unit) {
+        viewModel.cleared.collect { snackbarHostState.showSnackbar("已清空同步历史") }
+    }
+
+    if (showClearHistoryDialog) {
+        AlertDialog(
+            onDismissRequest = { showClearHistoryDialog = false },
+            title = { Text("清空同步历史") },
+            text = {
+                Text("将删除全部本地会话与记录，同时清理本地 FIT 文件缓存；不影响捷安特服务端数据与去重。")
+            },
+            confirmButton = {
+                TextButton(onClick = {
+                    viewModel.onClearHistory()
+                    showClearHistoryDialog = false
+                }) {
+                    Text("清空", color = MaterialTheme.colorScheme.error)
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { showClearHistoryDialog = false }) { Text("取消") }
+            },
+        )
     }
 
     editingPlatform?.let { platform ->
@@ -128,6 +155,19 @@ fun SettingsScreen(viewModel: SettingsViewModel) {
                 modifier = Modifier.fillMaxWidth(),
             ) {
                 Text("保存")
+            }
+
+            Text("数据管理", style = MaterialTheme.typography.titleMedium)
+            Card(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .clickable { showClearHistoryDialog = true },
+            ) {
+                Text(
+                    "清空同步历史",
+                    modifier = Modifier.padding(16.dp),
+                    color = MaterialTheme.colorScheme.error,
+                )
             }
         }
     }

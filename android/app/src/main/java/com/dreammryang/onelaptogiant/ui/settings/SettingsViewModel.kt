@@ -29,6 +29,7 @@ class SettingsViewModel(
     private val credentials: CredentialStore,
     private val schedule: (intervalHours: Int, wifiOnly: Boolean) -> Unit,
     private val cancelSchedule: () -> Unit,
+    private val clearHistory: suspend () -> Unit,
 ) : ViewModel() {
 
     private val _uiState = MutableStateFlow(SettingsUiState())
@@ -36,6 +37,9 @@ class SettingsViewModel(
 
     private val _saved = MutableSharedFlow<Unit>()
     val saved: SharedFlow<Unit> = _saved
+
+    private val _cleared = MutableSharedFlow<Unit>()
+    val cleared: SharedFlow<Unit> = _cleared
 
     init {
         viewModelScope.launch {
@@ -85,6 +89,12 @@ class SettingsViewModel(
             _uiState.value = s.copy(giantUsername = username.trim(), giantPassword = password)
             rescheduleIfConfigured(s.intervalHours, s.wifiOnly)
             _saved.emit(Unit)
+        }
+
+    fun onClearHistory(): Job =
+        viewModelScope.launch {
+            clearHistory()
+            _cleared.emit(Unit)
         }
 
     private fun rescheduleIfConfigured(intervalHours: Int, wifiOnly: Boolean) {

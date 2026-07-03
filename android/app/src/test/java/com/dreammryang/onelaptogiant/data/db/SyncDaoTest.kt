@@ -106,4 +106,60 @@ class SyncDaoTest {
         assertEquals(listOf("a.fit"), db.recordDao().observeBySession(sid1).first().map { it.fitUrl })
         assertEquals(1, db.recordDao().observeProcessFailedCount().first())
     }
+
+    @Test
+    fun `sessionDao deleteAll 清空全部会话`() = runTest {
+        db.sessionDao().insert(session())
+        db.sessionDao().insert(session().copy(startedAt = 2000L))
+
+        db.sessionDao().deleteAll()
+
+        assertEquals(emptyList<SyncSessionEntity>(), db.sessionDao().observeAll().first())
+    }
+
+    @Test
+    fun `sessionDao deleteById 只删单个会话`() = runTest {
+        val id1 = db.sessionDao().insert(session())
+        val id2 = db.sessionDao().insert(session().copy(startedAt = 2000L))
+
+        db.sessionDao().deleteById(id1)
+
+        val remaining = db.sessionDao().observeAll().first()
+        assertEquals(listOf(id2), remaining.map { it.id })
+    }
+
+    @Test
+    fun `recordDao deleteAll 清空全部记录`() = runTest {
+        val sid = db.sessionDao().insert(session())
+        db.recordDao().insert(record("a.fit", sid, RecordStatus.SYNCED))
+        db.recordDao().insert(record("b.fit", sid, RecordStatus.SYNCED))
+
+        db.recordDao().deleteAll()
+
+        assertEquals(emptyList<SyncRecordEntity>(), db.recordDao().observeBySession(sid).first())
+    }
+
+    @Test
+    fun `recordDao deleteById 只删单条记录`() = runTest {
+        val sid = db.sessionDao().insert(session())
+        val id1 = db.recordDao().insert(record("a.fit", sid, RecordStatus.SYNCED))
+        db.recordDao().insert(record("b.fit", sid, RecordStatus.SYNCED))
+
+        db.recordDao().deleteById(id1)
+
+        assertEquals(listOf("b.fit"), db.recordDao().observeBySession(sid).first().map { it.fitUrl })
+    }
+
+    @Test
+    fun `recordDao deleteBySession 只删指向该会话的记录`() = runTest {
+        val sid1 = db.sessionDao().insert(session())
+        val sid2 = db.sessionDao().insert(session())
+        db.recordDao().insert(record("a.fit", sid1, RecordStatus.SYNCED))
+        db.recordDao().insert(record("b.fit", sid2, RecordStatus.SYNCED))
+
+        db.recordDao().deleteBySession(sid1)
+
+        assertEquals(emptyList<SyncRecordEntity>(), db.recordDao().observeBySession(sid1).first())
+        assertEquals(listOf("b.fit"), db.recordDao().observeBySession(sid2).first().map { it.fitUrl })
+    }
 }

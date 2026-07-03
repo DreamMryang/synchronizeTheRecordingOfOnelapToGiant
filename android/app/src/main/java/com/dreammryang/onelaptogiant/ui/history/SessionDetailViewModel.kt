@@ -16,6 +16,7 @@ import kotlinx.coroutines.launch
 class SessionDetailViewModel(
     records: Flow<List<SyncRecordEntity>>,
     private val retry: suspend (recordId: Long) -> SyncOutcome,
+    private val deleteRecord: suspend (recordId: Long) -> Unit,
 ) : ViewModel() {
 
     val records: StateFlow<List<SyncRecordEntity>> =
@@ -32,6 +33,13 @@ class SessionDetailViewModel(
                 SyncOutcome.Skipped -> "已有同步在进行，稍后再试"
             }
             _message.emit(text)
+        }
+    }
+
+    fun onDelete(recordId: Long) {
+        viewModelScope.launch {
+            deleteRecord(recordId)
+            _message.emit("已删除")
         }
     }
 }

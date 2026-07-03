@@ -49,6 +49,7 @@ class HistoryViewModelTest {
             progress = flowOf(SyncProgress(SyncStep.DOWNLOADING, 1, 3)),
             processFailedCount = flowOf(2),
             onSyncRequested = { triggered++ },
+            deleteSession = {},
         )
 
         val state = vm.uiState.first { it.configured }
@@ -65,7 +66,7 @@ class HistoryViewModelTest {
 
     @Test
     fun `默认状态未配置且空闲空列表`() = runTest {
-        val vm = HistoryViewModel(flowOf(emptyList()), flowOf(false), flowOf(null), flowOf(0)) {}
+        val vm = HistoryViewModel(flowOf(emptyList()), flowOf(false), flowOf(null), flowOf(0), {}, deleteSession = {})
         val state = vm.uiState.first()
         assertFalse(state.configured)
         assertFalse(state.syncing)
@@ -75,10 +76,32 @@ class HistoryViewModelTest {
     @Test
     fun `onSyncClick 触发回调`() = runTest {
         var triggered = 0
-        val vm = HistoryViewModel(flowOf(emptyList()), flowOf(true), flowOf(null), flowOf(0)) { triggered++ }
+        val vm = HistoryViewModel(
+            flowOf(emptyList()), flowOf(true), flowOf(null), flowOf(0),
+            onSyncRequested = { triggered++ }, deleteSession = {},
+        )
         vm.onSyncClick()
         vm.onSyncClick()
         assertEquals(2, triggered)
+    }
+
+    @Test
+    fun `删除会话调用 lambda 并发出已删除会话提示`() = runTest {
+        val deleted = mutableListOf<Long>()
+        val vm = HistoryViewModel(
+            flowOf(emptyList()), flowOf(true), flowOf(null), flowOf(0),
+            onSyncRequested = {}, deleteSession = { deleted += it },
+        )
+        val messages = mutableListOf<String>()
+        val job = launch { vm.message.collect { messages += it } }
+        runCurrent()
+
+        vm.onDeleteSession(42L)
+        runCurrent()
+
+        assertEquals(listOf(42L), deleted)
+        assertEquals(listOf("已删除会话"), messages)
+        job.cancel()
     }
 
     @Test
@@ -94,7 +117,7 @@ class HistoryViewModelTest {
                         ),
                     ),
                 )
-                val vm = HistoryViewModel(sessionsFlow, flowOf(true), flowOf(null), flowOf(0)) {}
+                val vm = HistoryViewModel(sessionsFlow, flowOf(true), flowOf(null), flowOf(0), {}, deleteSession = {})
                 val messages = mutableListOf<String>()
                 val job = launch { vm.message.collect { messages += it } }
                 runCurrent() // 确保 collect 已建立订阅，再触发终态
@@ -129,7 +152,7 @@ class HistoryViewModelTest {
                         ),
                     ),
                 )
-                val vm = HistoryViewModel(sessionsFlow, flowOf(true), flowOf(null), flowOf(0)) {}
+                val vm = HistoryViewModel(sessionsFlow, flowOf(true), flowOf(null), flowOf(0), {}, deleteSession = {})
                 val messages = mutableListOf<String>()
                 val job = launch { vm.message.collect { messages += it } }
                 runCurrent()
@@ -162,7 +185,7 @@ class HistoryViewModelTest {
                         ),
                     ),
                 )
-                val vm = HistoryViewModel(sessionsFlow, flowOf(true), flowOf(null), flowOf(0)) {}
+                val vm = HistoryViewModel(sessionsFlow, flowOf(true), flowOf(null), flowOf(0), {}, deleteSession = {})
                 val messages = mutableListOf<String>()
                 val job = launch { vm.message.collect { messages += it } }
                 runCurrent()

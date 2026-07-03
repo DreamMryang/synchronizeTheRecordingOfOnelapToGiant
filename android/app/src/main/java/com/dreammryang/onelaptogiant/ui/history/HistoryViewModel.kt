@@ -29,6 +29,7 @@ class HistoryViewModel(
     progress: Flow<SyncProgress?>,
     processFailedCount: Flow<Int>,
     private val onSyncRequested: () -> Unit,
+    private val deleteSession: suspend (Long) -> Unit,
 ) : ViewModel() {
 
     val uiState: StateFlow<HistoryUiState> =
@@ -63,4 +64,11 @@ class HistoryViewModel(
     }
 
     fun onSyncClick() = onSyncRequested()
+
+    fun onDeleteSession(sessionId: Long) {
+        viewModelScope.launch {
+            deleteSession(sessionId)
+            _message.emit("已删除会话")
+        }
+    }
 }

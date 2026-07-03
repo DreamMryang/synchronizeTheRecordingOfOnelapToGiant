@@ -25,4 +25,10 @@ interface SyncSessionDao {
 
     @Query("UPDATE sync_session SET status = 'FAILED', error_msg = '进程中断', finished_at = :now WHERE status = 'RUNNING'")
     suspend fun failOrphanRunning(now: Long): Int
+
+    @Query("DELETE FROM sync_session")
+    suspend fun deleteAll()
+
+    @Query("DELETE FROM sync_session WHERE id = :id")
+    suspend fun deleteById(id: Long)
 }

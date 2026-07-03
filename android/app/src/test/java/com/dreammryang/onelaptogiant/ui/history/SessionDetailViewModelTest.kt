@@ -41,17 +41,21 @@ class SessionDetailViewModelTest {
 
     @Test
     fun `暴露记录列表`() = runTest(dispatcher) {
-        val vm = SessionDetailViewModel(flowOf(listOf(record))) { SyncOutcome.Skipped }
+        val vm = SessionDetailViewModel(flowOf(listOf(record)), retry = { SyncOutcome.Skipped }, deleteRecord = {})
         assertEquals(listOf(record), vm.records.first { it.isNotEmpty() })
     }
 
     @Test
     fun `重试成功与被跳过时发出对应提示`() = runTest(dispatcher) {
         var retried = mutableListOf<Long>()
-        val vm = SessionDetailViewModel(flowOf(emptyList())) { id ->
-            retried += id
-            if (retried.size == 1) SyncOutcome.Finished(9L, SessionStatus.SUCCESS) else SyncOutcome.Skipped
-        }
+        val vm = SessionDetailViewModel(
+            flowOf(emptyList()),
+            retry = { id ->
+                retried += id
+                if (retried.size == 1) SyncOutcome.Finished(9L, SessionStatus.SUCCESS) else SyncOutcome.Skipped
+            },
+            deleteRecord = {},
+        )
         val messages = mutableListOf<String>()
         val job = launch { vm.message.collect { messages += it } }
         runCurrent() // 确保 collect 已建立订阅，再触发 onRetry
@@ -65,6 +69,26 @@ class SessionDetailViewModelTest {
         assertEquals(2, messages.size)
         assertEquals("重试成功", messages[0])
         assertEquals("已有同步在进行，稍后再试", messages[1])
+        job.cancel()
+    }
+
+    @Test
+    fun `删除记录调用 lambda 并发出已删除提示`() = runTest(dispatcher) {
+        val deleted = mutableListOf<Long>()
+        val vm = SessionDetailViewModel(
+            flowOf(emptyList()),
+            retry = { SyncOutcome.Skipped },
+            deleteRecord = { deleted += it },
+        )
+        val messages = mutableListOf<String>()
+        val job = launch { vm.message.collect { messages += it } }
+        runCurrent()
+
+        vm.onDelete(7L)
+        runCurrent()
+
+        assertEquals(listOf(7L), deleted)
+        assertEquals(listOf("已删除"), messages)
         job.cancel()
     }
 }

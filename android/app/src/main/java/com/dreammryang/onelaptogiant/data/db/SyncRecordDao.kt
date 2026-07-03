@@ -28,4 +28,13 @@ interface SyncRecordDao {
 
     @Query("SELECT COUNT(*) FROM sync_record WHERE status = 'PROCESS_FAILED'")
     fun observeProcessFailedCount(): Flow<Int>
+
+    @Query("DELETE FROM sync_record")
+    suspend fun deleteAll()
+
+    @Query("DELETE FROM sync_record WHERE id = :id")
+    suspend fun deleteById(id: Long)
+
+    @Query("DELETE FROM sync_record WHERE session_id = :sessionId")
+    suspend fun deleteBySession(sessionId: Long)
 }

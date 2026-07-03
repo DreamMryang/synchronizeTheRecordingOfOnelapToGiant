@@ -78,6 +78,10 @@ fun AppNav(container: AppContainer) {
                             progress = container.syncEngine.progress,
                             processFailedCount = container.database.recordDao().observeProcessFailedCount(),
                             onSyncRequested = { container.syncScheduler.triggerManual() },
+                            deleteSession = {
+                                container.database.recordDao().deleteBySession(it)
+                                container.database.sessionDao().deleteById(it)
+                            },
                         )
                     }
                 })
@@ -97,6 +101,7 @@ fun AppNav(container: AppContainer) {
                         SessionDetailViewModel(
                             records = container.database.recordDao().observeBySession(sessionId),
                             retry = { recordId -> container.syncEngine.retryRecord(recordId) },
+                            deleteRecord = { recordId -> container.database.recordDao().deleteById(recordId) },
                         )
                     }
                 })
@@ -112,6 +117,11 @@ fun AppNav(container: AppContainer) {
                                 container.syncScheduler.schedulePeriodic(hours, wifiOnly)
                             },
                             cancelSchedule = { container.syncScheduler.cancelPeriodic() },
+                            clearHistory = {
+                                container.database.recordDao().deleteAll()
+                                container.database.sessionDao().deleteAll()
+                                container.fitDir.deleteRecursively()
+                            },
                         )
                     }
                 })

@@ -14,8 +14,10 @@ import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.cancel
 import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.launch
 import kotlinx.coroutines.test.UnconfinedTestDispatcher
 import kotlinx.coroutines.test.resetMain
+import kotlinx.coroutines.test.runCurrent
 import kotlinx.coroutines.test.runTest
 import kotlinx.coroutines.test.setMain
 import org.junit.After
@@ -41,6 +43,7 @@ class SettingsViewModelTest {
     private lateinit var credentials: CredentialStore
     private val scheduled = mutableListOf<Pair<Int, Boolean>>()
     private var cancelCount = 0
+    private var clearHistoryCount = 0
 
     @Before
     fun setup() {
@@ -56,6 +59,7 @@ class SettingsViewModelTest {
         credentials = CredentialStore(prefs, tokenStore)
         scheduled.clear()
         cancelCount = 0
+        clearHistoryCount = 0
     }
 
     @After
@@ -69,6 +73,7 @@ class SettingsViewModelTest {
         credentials,
         schedule = { h, w -> scheduled += h to w },
         cancelSchedule = { cancelCount++ },
+        clearHistory = { clearHistoryCount++ },
     )
 
     @Test
@@ -164,5 +169,21 @@ class SettingsViewModelTest {
         vm.save().join()
 
         assertEquals(30, settings.recentDays.first())
+    }
+
+    @Test
+    fun `清空历史调用一次 lambda 并发出 cleared`() = runTest {
+        val vm = vm()
+        vm.uiState.first { it.loaded }
+        val emitted = mutableListOf<Unit>()
+        val job = launch { vm.cleared.collect { emitted += it } }
+        runCurrent()
+
+        vm.onClearHistory().join()
+        runCurrent()
+
+        assertEquals(1, clearHistoryCount)
+        assertEquals(1, emitted.size)
+        job.cancel()
     }
 }

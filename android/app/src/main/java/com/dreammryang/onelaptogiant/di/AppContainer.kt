@@ -34,6 +34,8 @@ class AppContainer(private val app: Application) {
 
     val settingsRepository: SettingsRepository by lazy { SettingsRepository(app.settingsDataStore) }
 
+    val fitDir: File by lazy { File(app.filesDir, "fit") }
+
     val onelapApi: OnelapApi by lazy { OnelapApi(HttpClientProvider.client, HttpClientProvider.json) }
 
     val giantApi: GiantApi by lazy { GiantApi(HttpClientProvider.client, HttpClientProvider.json) }
@@ -65,7 +67,7 @@ class AppContainer(private val app: Application) {
             sessionDao = database.sessionDao(),
             recordDao = database.recordDao(),
             recentDaysProvider = { settingsRepository.recentDays.first() },
-            fitDir = File(app.filesDir, "fit"),
+            fitDir = fitDir,
         )
     }
 
