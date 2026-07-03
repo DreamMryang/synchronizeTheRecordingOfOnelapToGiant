@@ -112,30 +112,6 @@ class SettingsViewModelTest {
     }
 
     @Test
-    fun `页面保存只写同步选项不动凭证`() = runTest {
-        credentials.saveOnelap("a", "b")
-        credentials.saveGiant("c", "d")
-        tokenStore.set(Platform.ONELAP, "onelap-token")
-        tokenStore.set(Platform.GIANT, "giant-token")
-        val vm = vm()
-        vm.uiState.first { it.loaded }
-        vm.update { it.copy(recentDays = "15", intervalHours = 3, wifiOnly = true) }
-
-        vm.save().join()
-
-        assertEquals("a", credentials.onelapAccount)
-        assertEquals("b", credentials.onelapPassword)
-        assertEquals("c", credentials.giantUsername)
-        assertEquals("d", credentials.giantPassword)
-        assertEquals("onelap-token", tokenStore.get(Platform.ONELAP)) // 凭证未变，token 不清
-        assertEquals("giant-token", tokenStore.get(Platform.GIANT))
-        assertEquals(15, settings.recentDays.first())
-        assertEquals(3, settings.intervalHours.first())
-        assertTrue(settings.wifiOnly.first())
-        assertEquals(listOf(3 to true), scheduled)
-    }
-
-    @Test
     fun `账号不全时保存不注册调度`() = runTest {
         val vm = vm()
         vm.uiState.first { it.loaded }
@@ -147,28 +123,105 @@ class SettingsViewModelTest {
     }
 
     @Test
-    fun `间隔选关闭时取消调度而不注册`() = runTest {
+    fun `选择间隔即保存并重排`() = runTest {
         credentials.saveOnelap("a", "b")
         credentials.saveGiant("c", "d")
         val vm = vm()
         vm.uiState.first { it.loaded }
-        vm.update { it.copy(intervalHours = INTERVAL_OFF) }
+        val emitted = mutableListOf<Unit>()
+        val job = launch { vm.saved.collect { emitted += it } }
+        runCurrent()
 
-        vm.save().join()
+        vm.onIntervalSelected(3).join()
+        runCurrent()
 
-        assertEquals(1, cancelCount)
-        assertTrue(scheduled.isEmpty())
+        assertEquals(3, settings.intervalHours.first())
+        assertEquals(3, vm.uiState.value.intervalHours)
+        assertEquals(listOf(3 to false), scheduled)
+        assertEquals(0, cancelCount)
+        assertEquals(1, emitted.size)
+        job.cancel()
     }
 
     @Test
-    fun `非法天数回落默认 30`() = runTest {
+    fun `选择关闭间隔即保存并取消调度`() = runTest {
+        credentials.saveOnelap("a", "b")
+        credentials.saveGiant("c", "d")
         val vm = vm()
         vm.uiState.first { it.loaded }
-        vm.update { it.copy(recentDays = "abc") }
 
-        vm.save().join()
+        vm.onIntervalSelected(INTERVAL_OFF).join()
+
+        assertEquals(INTERVAL_OFF, settings.intervalHours.first())
+        assertEquals(INTERVAL_OFF, vm.uiState.value.intervalHours)
+        assertTrue(scheduled.isEmpty())
+        assertEquals(1, cancelCount)
+    }
+
+    @Test
+    fun `拨动仅Wifi开关即保存并重排`() = runTest {
+        credentials.saveOnelap("a", "b")
+        credentials.saveGiant("c", "d")
+        val vm = vm()
+        vm.uiState.first { it.loaded }
+        val emitted = mutableListOf<Unit>()
+        val job = launch { vm.saved.collect { emitted += it } }
+        runCurrent()
+
+        vm.onWifiOnlyChanged(true).join()
+        runCurrent()
+
+        assertTrue(settings.wifiOnly.first())
+        assertTrue(vm.uiState.value.wifiOnly)
+        assertEquals(listOf(6 to true), scheduled) // 默认间隔 6 小时
+        assertEquals(0, cancelCount)
+        assertEquals(1, emitted.size)
+        job.cancel()
+    }
+
+    @Test
+    fun `账号不全时切换开关不注册也不取消调度`() = runTest {
+        val vm = vm()
+        vm.uiState.first { it.loaded }
+
+        vm.onWifiOnlyChanged(true).join()
+
+        assertTrue(scheduled.isEmpty())
+        assertEquals(0, cancelCount)
+    }
+
+    @Test
+    fun `确认天数即保存且非法回落30、不触发重排`() = runTest {
+        credentials.saveOnelap("a", "b")
+        credentials.saveGiant("c", "d")
+        val vm = vm()
+        vm.uiState.first { it.loaded }
+        val emitted = mutableListOf<Unit>()
+        val job = launch { vm.saved.collect { emitted += it } }
+        runCurrent()
+
+        vm.onRecentDaysConfirmed("abc").join()
+        runCurrent()
 
         assertEquals(30, settings.recentDays.first())
+        assertEquals("30", vm.uiState.value.recentDays)
+        assertTrue(scheduled.isEmpty()) // 天数不影响调度
+        assertEquals(0, cancelCount)
+        assertEquals(1, emitted.size)
+        job.cancel()
+    }
+
+    @Test
+    fun `确认合法天数即保存`() = runTest {
+        val vm = vm()
+        vm.uiState.first { it.loaded }
+
+        vm.onRecentDaysConfirmed("15").join()
+
+        assertEquals(15, settings.recentDays.first())
+        assertEquals("15", vm.uiState.value.recentDays)
+        assertTrue(scheduled.isEmpty())
+        assertEquals(0, cancelCount)
     }
 
     @Test

@@ -56,20 +56,28 @@ class SettingsViewModel(
         }
     }
 
-    fun update(transform: (SettingsUiState) -> SettingsUiState) {
-        _uiState.value = transform(_uiState.value)
-    }
-
-    fun save(): Job =
+    fun onIntervalSelected(hours: Int): Job =
         viewModelScope.launch {
-            val s = _uiState.value
-            val days = s.recentDays.toIntOrNull()?.coerceIn(1, 365) ?: 30
+            settings.setIntervalHours(hours)
+            _uiState.value = _uiState.value.copy(intervalHours = hours)
+            // 首次配置齐全自动注册；后续改间隔即时生效（UPDATE 策略重排）；选「关闭」则取消周期任务
+            rescheduleIfConfigured(hours, _uiState.value.wifiOnly)
+            _saved.emit(Unit)
+        }
+
+    fun onWifiOnlyChanged(wifiOnly: Boolean): Job =
+        viewModelScope.launch {
+            settings.setWifiOnly(wifiOnly)
+            _uiState.value = _uiState.value.copy(wifiOnly = wifiOnly)
+            rescheduleIfConfigured(_uiState.value.intervalHours, wifiOnly)
+            _saved.emit(Unit)
+        }
+
+    fun onRecentDaysConfirmed(daysText: String): Job =
+        viewModelScope.launch {
+            val days = daysText.toIntOrNull()?.coerceIn(1, 365) ?: 30
             settings.setRecentDays(days)
-            settings.setIntervalHours(s.intervalHours)
-            settings.setWifiOnly(s.wifiOnly)
-            // 首次配置齐全自动注册；后续改间隔/网络约束即时生效（UPDATE 策略重排）；间隔选「关闭」则取消周期任务
-            rescheduleIfConfigured(s.intervalHours, s.wifiOnly)
-            _uiState.value = s.copy(recentDays = days.toString())
+            _uiState.value = _uiState.value.copy(recentDays = days.toString())
             _saved.emit(Unit)
         }
 

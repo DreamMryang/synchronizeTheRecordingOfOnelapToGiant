@@ -10,11 +10,11 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.AlertDialog
-import androidx.compose.material3.Button
 import androidx.compose.material3.Card
 import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.ExposedDropdownMenuBox
 import androidx.compose.material3.ExposedDropdownMenuDefaults
+import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.MenuAnchorType
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
@@ -48,6 +48,7 @@ fun SettingsScreen(viewModel: SettingsViewModel) {
     var editingPlatform by remember { mutableStateOf<CredentialPlatform?>(null) }
 
     var showClearHistoryDialog by remember { mutableStateOf(false) }
+    var showRecentDaysDialog by remember { mutableStateOf(false) }
 
     LaunchedEffect(Unit) {
         viewModel.saved.collect { snackbarHostState.showSnackbar("已保存") }
@@ -105,6 +106,17 @@ fun SettingsScreen(viewModel: SettingsViewModel) {
         )
     }
 
+    if (showRecentDaysDialog) {
+        RecentDaysDialog(
+            initialValue = state.recentDays,
+            onConfirm = { v ->
+                viewModel.onRecentDaysConfirmed(v)
+                showRecentDaysDialog = false
+            },
+            onDismiss = { showRecentDaysDialog = false },
+        )
+    }
+
     Scaffold(
         topBar = { androidx.compose.material3.TopAppBar(title = { Text("设置") }) },
         snackbarHost = { SnackbarHost(snackbarHostState) },
@@ -117,7 +129,7 @@ fun SettingsScreen(viewModel: SettingsViewModel) {
                 .padding(16.dp),
             verticalArrangement = Arrangement.spacedBy(12.dp),
         ) {
-            Text("账号", style = MaterialTheme.typography.titleMedium)
+            SectionTitle("账号")
             CredentialEntry(
                 label = "顽鹿账号",
                 accountName = state.onelapAccount,
@@ -129,17 +141,17 @@ fun SettingsScreen(viewModel: SettingsViewModel) {
                 onClick = { editingPlatform = CredentialPlatform.GIANT },
             )
 
-            Text("同步选项", style = MaterialTheme.typography.titleMedium)
-            OutlinedTextField(
-                value = state.recentDays,
-                onValueChange = { v -> viewModel.update { it.copy(recentDays = v) } },
-                label = { Text("同步最近天数") },
-                singleLine = true,
-                modifier = Modifier.fillMaxWidth(),
+            HorizontalDivider(Modifier.padding(vertical = 8.dp))
+
+            SectionTitle("同步选项")
+            CredentialEntry(
+                label = "同步最近天数",
+                accountName = "${state.recentDays} 天",
+                onClick = { showRecentDaysDialog = true },
             )
             IntervalDropdown(
                 selected = state.intervalHours,
-                onSelect = { v -> viewModel.update { it.copy(intervalHours = v) } },
+                onSelect = viewModel::onIntervalSelected,
             )
             Row(
                 modifier = Modifier.fillMaxWidth(),
@@ -149,19 +161,13 @@ fun SettingsScreen(viewModel: SettingsViewModel) {
                 Text("仅 Wi-Fi 下同步")
                 Switch(
                     checked = state.wifiOnly,
-                    onCheckedChange = { v -> viewModel.update { it.copy(wifiOnly = v) } },
+                    onCheckedChange = viewModel::onWifiOnlyChanged,
                 )
             }
 
-            Button(
-                onClick = viewModel::save,
-                enabled = state.loaded,
-                modifier = Modifier.fillMaxWidth(),
-            ) {
-                Text("保存")
-            }
+            HorizontalDivider(Modifier.padding(vertical = 8.dp))
 
-            Text("数据管理", style = MaterialTheme.typography.titleMedium)
+            SectionTitle("数据管理")
             Card(
                 modifier = Modifier
                     .fillMaxWidth()
@@ -175,6 +181,15 @@ fun SettingsScreen(viewModel: SettingsViewModel) {
             }
         }
     }
+}
+
+@Composable
+private fun SectionTitle(text: String) {
+    Text(
+        text = text,
+        style = MaterialTheme.typography.titleSmall,
+        color = MaterialTheme.colorScheme.primary,
+    )
 }
 
 @OptIn(androidx.compose.material3.ExperimentalMaterial3Api::class)
@@ -228,6 +243,35 @@ private fun CredentialEntry(label: String, accountName: String, onClick: () -> U
             )
         }
     }
+}
+
+@Composable
+private fun RecentDaysDialog(
+    initialValue: String,
+    onConfirm: (String) -> Unit,
+    onDismiss: () -> Unit,
+) {
+    var value by remember(initialValue) { mutableStateOf(initialValue) }
+
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text("同步最近天数") },
+        text = {
+            OutlinedTextField(
+                value = value,
+                onValueChange = { value = it },
+                label = { Text("天数") },
+                singleLine = true,
+                modifier = Modifier.fillMaxWidth(),
+            )
+        },
+        confirmButton = {
+            TextButton(onClick = { onConfirm(value) }) { Text("确定") }
+        },
+        dismissButton = {
+            TextButton(onClick = onDismiss) { Text("取消") }
+        },
+    )
 }
 
 @Composable
