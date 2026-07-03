@@ -1,5 +1,6 @@
 package com.dreammryang.onelaptogiant.ui
 
+import androidx.compose.foundation.layout.consumeWindowInsets
 import androidx.compose.foundation.layout.padding
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.History
@@ -67,7 +68,10 @@ fun AppNav(container: AppContainer) {
         NavHost(
             navController = navController,
             startDestination = "history",
-            modifier = Modifier.padding(padding),
+            // 外层已按系统栏 inset 加过 padding，消费掉以免内层 Scaffold 再加一遍（顶部双重空白）
+            modifier = Modifier
+                .padding(padding)
+                .consumeWindowInsets(padding),
         ) {
             composable("history") {
                 val vm: HistoryViewModel = viewModel(factory = viewModelFactory {
