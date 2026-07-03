@@ -7,10 +7,14 @@ import com.dreammryang.onelaptogiant.sync.SyncProgress
 import com.dreammryang.onelaptogiant.sync.SyncStep
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ExperimentalCoroutinesApi
+import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.flowOf
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.test.StandardTestDispatcher
 import kotlinx.coroutines.test.UnconfinedTestDispatcher
 import kotlinx.coroutines.test.resetMain
+import kotlinx.coroutines.test.runCurrent
 import kotlinx.coroutines.test.runTest
 import kotlinx.coroutines.test.setMain
 import org.junit.After
@@ -75,5 +79,108 @@ class HistoryViewModelTest {
         vm.onSyncClick()
         vm.onSyncClick()
         assertEquals(2, triggered)
+    }
+
+    @Test
+    fun `会话从进行中翻转为终态时发出完成提示`() {
+        val dispatcher = StandardTestDispatcher()
+        Dispatchers.setMain(dispatcher)
+        try {
+            runTest(dispatcher) {
+                val sessionsFlow = MutableStateFlow(
+                    listOf(
+                        SyncSessionEntity(
+                            id = 1, triggerType = TriggerType.AUTO, status = SessionStatus.RUNNING, startedAt = 1L,
+                        ),
+                    ),
+                )
+                val vm = HistoryViewModel(sessionsFlow, flowOf(true), flowOf(null), flowOf(0)) {}
+                val messages = mutableListOf<String>()
+                val job = launch { vm.message.collect { messages += it } }
+                runCurrent() // 确保 collect 已建立订阅，再触发终态
+
+                sessionsFlow.value = listOf(
+                    SyncSessionEntity(
+                        id = 1, triggerType = TriggerType.AUTO, status = SessionStatus.SUCCESS,
+                        startedAt = 1L, syncedCount = 2,
+                    ),
+                )
+                runCurrent()
+
+                assertEquals(1, messages.size)
+                assertEquals("同步完成：成功（同步 2 条）", messages[0])
+                job.cancel()
+            }
+        } finally {
+            Dispatchers.resetMain()
+        }
+    }
+
+    @Test
+    fun `首次加载即终态不触发提示`() {
+        val dispatcher = StandardTestDispatcher()
+        Dispatchers.setMain(dispatcher)
+        try {
+            runTest(dispatcher) {
+                val sessionsFlow = MutableStateFlow(
+                    listOf(
+                        SyncSessionEntity(
+                            id = 1, triggerType = TriggerType.AUTO, status = SessionStatus.SUCCESS, startedAt = 1L,
+                        ),
+                    ),
+                )
+                val vm = HistoryViewModel(sessionsFlow, flowOf(true), flowOf(null), flowOf(0)) {}
+                val messages = mutableListOf<String>()
+                val job = launch { vm.message.collect { messages += it } }
+                runCurrent()
+
+                sessionsFlow.value = listOf(
+                    SyncSessionEntity(
+                        id = 1, triggerType = TriggerType.AUTO, status = SessionStatus.SUCCESS, startedAt = 1L,
+                    ),
+                )
+                runCurrent()
+
+                assertTrue(messages.isEmpty())
+                job.cancel()
+            }
+        } finally {
+            Dispatchers.resetMain()
+        }
+    }
+
+    @Test
+    fun `FAILED 终态提示携带错误信息`() {
+        val dispatcher = StandardTestDispatcher()
+        Dispatchers.setMain(dispatcher)
+        try {
+            runTest(dispatcher) {
+                val sessionsFlow = MutableStateFlow(
+                    listOf(
+                        SyncSessionEntity(
+                            id = 2, triggerType = TriggerType.AUTO, status = SessionStatus.RUNNING, startedAt = 1L,
+                        ),
+                    ),
+                )
+                val vm = HistoryViewModel(sessionsFlow, flowOf(true), flowOf(null), flowOf(0)) {}
+                val messages = mutableListOf<String>()
+                val job = launch { vm.message.collect { messages += it } }
+                runCurrent()
+
+                sessionsFlow.value = listOf(
+                    SyncSessionEntity(
+                        id = 2, triggerType = TriggerType.AUTO, status = SessionStatus.FAILED,
+                        startedAt = 1L, errorMsg = "网络不可用",
+                    ),
+                )
+                runCurrent()
+
+                assertEquals(1, messages.size)
+                assertEquals("同步失败：网络不可用", messages[0])
+                job.cancel()
+            }
+        } finally {
+            Dispatchers.resetMain()
+        }
     }
 }
