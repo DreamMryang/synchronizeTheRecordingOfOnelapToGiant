@@ -26,6 +26,7 @@ import androidx.compose.material3.SnackbarHostState
 import androidx.compose.material3.SnackbarResult
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
+import androidx.compose.material3.TopAppBar
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -40,7 +41,7 @@ import com.dreammryang.onelaptogiant.data.db.SyncSessionEntity
 import com.dreammryang.onelaptogiant.ui.common.formatTime
 import com.dreammryang.onelaptogiant.ui.common.label
 
-@OptIn(ExperimentalFoundationApi::class)
+@OptIn(ExperimentalFoundationApi::class, androidx.compose.material3.ExperimentalMaterial3Api::class)
 @Composable
 fun HistoryScreen(
     viewModel: HistoryViewModel,
@@ -86,6 +87,7 @@ fun HistoryScreen(
     }
 
     Scaffold(
+        topBar = { TopAppBar(title = { Text("同步历史") }) },
         snackbarHost = { SnackbarHost(snackbarHostState) },
         // 按钮放 bottomBar：SnackbarHost 自动显示在其上方，不再遮挡
         bottomBar = {
@@ -105,7 +107,9 @@ fun HistoryScreen(
                 .fillMaxSize()
                 .padding(padding),
         ) {
-            Column(
+            // 横幅区无内容时整体不渲染，避免空容器的 16dp 内边距在顶部留白
+            val hasBanner = !state.configured || state.processFailedCount > 0 || state.progress != null
+            if (hasBanner) Column(
                 modifier = Modifier
                     .fillMaxWidth()
                     .padding(16.dp),

@@ -109,7 +109,7 @@ fun AppNav(container: AppContainer) {
                         )
                     }
                 })
-                SessionDetailScreen(vm)
+                SessionDetailScreen(vm, onBack = { navController.popBackStack() })
             }
             composable("settings") {
                 val vm: SettingsViewModel = viewModel(factory = viewModelFactory {

@@ -10,6 +10,7 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.outlined.Delete
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Card
@@ -21,6 +22,7 @@ import androidx.compose.material3.SnackbarHost
 import androidx.compose.material3.SnackbarHostState
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
+import androidx.compose.material3.TopAppBar
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -36,8 +38,9 @@ import com.dreammryang.onelaptogiant.data.db.SyncRecordEntity
 import com.dreammryang.onelaptogiant.ui.common.color
 import com.dreammryang.onelaptogiant.ui.common.label
 
+@OptIn(androidx.compose.material3.ExperimentalMaterial3Api::class)
 @Composable
-fun SessionDetailScreen(viewModel: SessionDetailViewModel) {
+fun SessionDetailScreen(viewModel: SessionDetailViewModel, onBack: () -> Unit) {
     val records by viewModel.records.collectAsStateWithLifecycle()
     val snackbarHostState = remember { SnackbarHostState() }
     var recordPendingDelete by remember { mutableStateOf<SyncRecordEntity?>(null) }
@@ -73,7 +76,19 @@ fun SessionDetailScreen(viewModel: SessionDetailViewModel) {
         )
     }
 
-    Scaffold(snackbarHost = { SnackbarHost(snackbarHostState) }) { padding ->
+    Scaffold(
+        topBar = {
+            TopAppBar(
+                title = { Text("会话明细") },
+                navigationIcon = {
+                    IconButton(onClick = onBack) {
+                        Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "返回")
+                    }
+                },
+            )
+        },
+        snackbarHost = { SnackbarHost(snackbarHostState) },
+    ) { padding ->
         if (records.isEmpty()) {
             Box(Modifier.fillMaxSize().padding(padding), contentAlignment = Alignment.Center) {
                 Text("该会话没有记录明细")

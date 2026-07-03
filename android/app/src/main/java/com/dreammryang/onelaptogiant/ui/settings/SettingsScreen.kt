@@ -40,6 +40,7 @@ import com.dreammryang.onelaptogiant.data.settings.INTERVAL_OPTIONS
 
 private enum class CredentialPlatform { ONELAP, GIANT }
 
+@OptIn(androidx.compose.material3.ExperimentalMaterial3Api::class)
 @Composable
 fun SettingsScreen(viewModel: SettingsViewModel) {
     val state by viewModel.uiState.collectAsStateWithLifecycle()
@@ -104,7 +105,10 @@ fun SettingsScreen(viewModel: SettingsViewModel) {
         )
     }
 
-    Scaffold(snackbarHost = { SnackbarHost(snackbarHostState) }) { padding ->
+    Scaffold(
+        topBar = { androidx.compose.material3.TopAppBar(title = { Text("设置") }) },
+        snackbarHost = { SnackbarHost(snackbarHostState) },
+    ) { padding ->
         Column(
             modifier = Modifier
                 .fillMaxSize()
