@@ -84,6 +84,19 @@ class SyncDaoTest {
     }
 
     @Test
+    fun `failOrphanRunning 只清理 RUNNING 会话`() = runTest {
+        val id1 = db.sessionDao().insert(session(SessionStatus.RUNNING))
+        val id2 = db.sessionDao().insert(session(SessionStatus.SUCCESS))
+        val cleaned = db.sessionDao().failOrphanRunning(now = 9999L)
+        assertEquals(1, cleaned)
+        val orphan = db.sessionDao().getById(id1)!!
+        assertEquals(SessionStatus.FAILED, orphan.status)
+        assertEquals("进程中断", orphan.errorMsg)
+        assertEquals(9999L, orphan.finishedAt)
+        assertEquals(SessionStatus.SUCCESS, db.sessionDao().getById(id2)!!.status)
+    }
+
+    @Test
     fun `按会话查记录与处理失败计数`() = runTest {
         val sid1 = db.sessionDao().insert(session())
         val sid2 = db.sessionDao().insert(session())

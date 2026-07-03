@@ -86,7 +86,7 @@ class SyncEngine(
                 _progress.value = SyncProgress(SyncStep.DOWNLOADING, 0, 1)
                 val localFile = File(fitDir, record.fitUrl)
                 var downloadedCount = 0
-                val file = if (record.status == RecordStatus.UPLOAD_FAILED && localFile.exists()) {
+                val file = if (record.status == RecordStatus.UPLOAD_FAILED && localFile.exists() && localFile.length() > 0) {
                     localFile
                 } else {
                     onelapTokens.withAuthRetry { onelap.downloadFit(it, record.fitUrl, fitDir) }

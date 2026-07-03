@@ -22,4 +22,7 @@ interface SyncSessionDao {
 
     @Query("SELECT * FROM sync_session WHERE status != 'RUNNING' ORDER BY started_at DESC, id DESC LIMIT 1")
     fun observeLatestFinished(): Flow<SyncSessionEntity?>
+
+    @Query("UPDATE sync_session SET status = 'FAILED', error_msg = '进程中断', finished_at = :now WHERE status = 'RUNNING'")
+    suspend fun failOrphanRunning(now: Long): Int
 }
