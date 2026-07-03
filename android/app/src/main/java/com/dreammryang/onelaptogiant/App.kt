@@ -26,8 +26,12 @@ class App : Application() {
             }
         }
         bgScope.launch {
-            val cleaned = container.database.sessionDao().failOrphanRunning(System.currentTimeMillis())
-            if (cleaned > 0) Timber.i("已清理 %d 条进程中断残留的 RUNNING 会话", cleaned)
+            try {
+                val cleaned = container.database.sessionDao().failOrphanRunning(System.currentTimeMillis())
+                if (cleaned > 0) Timber.i("已清理 %d 条进程中断残留的 RUNNING 会话", cleaned)
+            } catch (e: Exception) {
+                Timber.w(e, "清理残留 RUNNING 会话失败，将于下次启动重试")
+            }
         }
     }
 }
