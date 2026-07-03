@@ -3,6 +3,7 @@ package com.dreammryang.onelaptogiant.ui.settings
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.dreammryang.onelaptogiant.data.auth.CredentialStore
+import com.dreammryang.onelaptogiant.data.settings.INTERVAL_OFF
 import com.dreammryang.onelaptogiant.data.settings.SettingsRepository
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.flow.MutableSharedFlow
@@ -27,6 +28,7 @@ class SettingsViewModel(
     private val settings: SettingsRepository,
     private val credentials: CredentialStore,
     private val schedule: (intervalHours: Int, wifiOnly: Boolean) -> Unit,
+    private val cancelSchedule: () -> Unit,
 ) : ViewModel() {
 
     private val _uiState = MutableStateFlow(SettingsUiState())
@@ -63,9 +65,9 @@ class SettingsViewModel(
             settings.setRecentDays(days)
             settings.setIntervalHours(s.intervalHours)
             settings.setWifiOnly(s.wifiOnly)
-            // 首次配置齐全自动注册；后续改间隔/网络约束即时生效（UPDATE 策略重排）
+            // 首次配置齐全自动注册；后续改间隔/网络约束即时生效（UPDATE 策略重排）；间隔选「关闭」则取消周期任务
             if (credentials.isConfigured()) {
-                schedule(s.intervalHours, s.wifiOnly)
+                if (s.intervalHours == INTERVAL_OFF) cancelSchedule() else schedule(s.intervalHours, s.wifiOnly)
             }
             _uiState.value = s.copy(recentDays = days.toString())
             _saved.emit(Unit)

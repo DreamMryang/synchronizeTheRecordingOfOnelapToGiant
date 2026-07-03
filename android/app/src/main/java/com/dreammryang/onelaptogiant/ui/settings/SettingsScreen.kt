@@ -31,6 +31,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import com.dreammryang.onelaptogiant.data.settings.INTERVAL_OFF
 import com.dreammryang.onelaptogiant.data.settings.INTERVAL_OPTIONS
 
 @Composable
@@ -126,7 +127,7 @@ private fun IntervalDropdown(selected: Int, onSelect: (Int) -> Unit) {
     var expanded by remember { mutableStateOf(false) }
     ExposedDropdownMenuBox(expanded = expanded, onExpandedChange = { expanded = it }) {
         OutlinedTextField(
-            value = "$selected 小时",
+            value = intervalLabel(selected),
             onValueChange = {},
             readOnly = true,
             label = { Text("同步间隔") },
@@ -139,7 +140,7 @@ private fun IntervalDropdown(selected: Int, onSelect: (Int) -> Unit) {
         ) {
             INTERVAL_OPTIONS.forEach { hours ->
                 DropdownMenuItem(
-                    text = { Text("$hours 小时") },
+                    text = { Text(intervalLabel(hours)) },
                     onClick = {
                         onSelect(hours)
                         expanded = false
@@ -149,3 +150,5 @@ private fun IntervalDropdown(selected: Int, onSelect: (Int) -> Unit) {
         }
     }
 }
+
+private fun intervalLabel(h: Int): String = if (h == INTERVAL_OFF) "关闭" else "$h 小时"

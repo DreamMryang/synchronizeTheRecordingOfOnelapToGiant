@@ -24,6 +24,10 @@ class SyncScheduler(private val workManager: WorkManager) {
         workManager.enqueueUniquePeriodicWork(PERIODIC_WORK, ExistingPeriodicWorkPolicy.UPDATE, request)
     }
 
+    fun cancelPeriodic() {
+        workManager.cancelUniqueWork(PERIODIC_WORK)
+    }
+
     fun triggerManual() {
         val request = OneTimeWorkRequestBuilder<SyncWorker>()
             .setConstraints(

@@ -6,6 +6,7 @@ import androidx.test.core.app.ApplicationProvider
 import com.dreammryang.onelaptogiant.data.auth.CredentialStore
 import com.dreammryang.onelaptogiant.data.auth.Platform
 import com.dreammryang.onelaptogiant.data.auth.TokenStore
+import com.dreammryang.onelaptogiant.data.settings.INTERVAL_OFF
 import com.dreammryang.onelaptogiant.data.settings.SettingsRepository
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -39,6 +40,7 @@ class SettingsViewModelTest {
     private lateinit var tokenStore: TokenStore
     private lateinit var credentials: CredentialStore
     private val scheduled = mutableListOf<Pair<Int, Boolean>>()
+    private var cancelCount = 0
 
     @Before
     fun setup() {
@@ -53,6 +55,7 @@ class SettingsViewModelTest {
         tokenStore = TokenStore(prefs)
         credentials = CredentialStore(prefs, tokenStore)
         scheduled.clear()
+        cancelCount = 0
     }
 
     @After
@@ -61,7 +64,12 @@ class SettingsViewModelTest {
         ioScope.cancel()
     }
 
-    private fun vm() = SettingsViewModel(settings, credentials) { h, w -> scheduled += h to w }
+    private fun vm() = SettingsViewModel(
+        settings,
+        credentials,
+        schedule = { h, w -> scheduled += h to w },
+        cancelSchedule = { cancelCount++ },
+    )
 
     @Test
     fun `初始状态从存储加载`() = runTest {
@@ -107,6 +115,24 @@ class SettingsViewModelTest {
 
         vm.save().join()
 
+        assertTrue(scheduled.isEmpty())
+    }
+
+    @Test
+    fun `间隔选关闭时取消调度而不注册`() = runTest {
+        val vm = vm()
+        vm.uiState.first { it.loaded }
+        vm.update {
+            it.copy(
+                onelapAccount = "a", onelapPassword = "b",
+                giantUsername = "c", giantPassword = "d",
+                intervalHours = INTERVAL_OFF,
+            )
+        }
+
+        vm.save().join()
+
+        assertEquals(1, cancelCount)
         assertTrue(scheduled.isEmpty())
     }
 

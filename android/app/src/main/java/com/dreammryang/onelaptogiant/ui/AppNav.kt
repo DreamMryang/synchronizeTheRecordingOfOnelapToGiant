@@ -117,6 +117,7 @@ fun AppNav(container: AppContainer) {
                             schedule = { hours, wifiOnly ->
                                 container.syncScheduler.schedulePeriodic(hours, wifiOnly)
                             },
+                            cancelSchedule = { container.syncScheduler.cancelPeriodic() },
                         )
                     }
                 })

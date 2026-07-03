@@ -4,10 +4,12 @@ import android.content.Context
 import androidx.test.core.app.ApplicationProvider
 import androidx.work.Configuration
 import androidx.work.NetworkType
+import androidx.work.WorkInfo
 import androidx.work.WorkManager
 import androidx.work.testing.SynchronousExecutor
 import androidx.work.testing.WorkManagerTestInitHelper
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertTrue
 import org.junit.Before
 import org.junit.Test
 import org.junit.runner.RunWith
@@ -42,5 +44,15 @@ class SyncSchedulerTest {
         scheduler.triggerManual()
         val infos = workManager.getWorkInfosForUniqueWork(SyncScheduler.MANUAL_WORK).get()
         assertEquals(1, infos.size)
+    }
+
+    @Test
+    fun `取消周期任务`() {
+        scheduler.schedulePeriodic(intervalHours = 6, wifiOnly = false)
+
+        scheduler.cancelPeriodic()
+
+        val infos = workManager.getWorkInfosForUniqueWork(SyncScheduler.PERIODIC_WORK).get()
+        assertTrue(infos.isEmpty() || infos.all { it.state == WorkInfo.State.CANCELLED })
     }
 }

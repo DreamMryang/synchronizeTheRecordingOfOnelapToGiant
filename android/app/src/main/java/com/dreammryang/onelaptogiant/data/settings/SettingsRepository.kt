@@ -12,7 +12,8 @@ import kotlinx.coroutines.flow.map
 
 val Context.settingsDataStore: DataStore<Preferences> by preferencesDataStore(name = "settings")
 
-val INTERVAL_OPTIONS = listOf(1, 3, 6, 12, 24)
+const val INTERVAL_OFF = 0
+val INTERVAL_OPTIONS = listOf(INTERVAL_OFF, 1, 3, 6, 12, 24)
 
 class SettingsRepository(private val dataStore: DataStore<Preferences>) {
     private object Keys {
