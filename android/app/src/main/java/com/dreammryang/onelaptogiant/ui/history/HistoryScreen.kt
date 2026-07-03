@@ -20,6 +20,7 @@ import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Scaffold
+import androidx.compose.material3.SnackbarDuration
 import androidx.compose.material3.SnackbarHost
 import androidx.compose.material3.SnackbarHostState
 import androidx.compose.material3.SnackbarResult
@@ -53,7 +54,12 @@ fun HistoryScreen(
 
     LaunchedEffect(Unit) {
         viewModel.message.collect { message ->
-            val result = snackbarHostState.showSnackbar(message = message, actionLabel = "回到顶部")
+            // 带动作的 Snackbar 默认 Indefinite（不点不消失），显式改为短时自动消失
+            val result = snackbarHostState.showSnackbar(
+                message = message,
+                actionLabel = "回到顶部",
+                duration = SnackbarDuration.Short,
+            )
             if (result == SnackbarResult.ActionPerformed) {
                 listState.animateScrollToItem(0)
             }
@@ -79,7 +85,21 @@ fun HistoryScreen(
         )
     }
 
-    Scaffold(snackbarHost = { SnackbarHost(snackbarHostState) }) { padding ->
+    Scaffold(
+        snackbarHost = { SnackbarHost(snackbarHostState) },
+        // 按钮放 bottomBar：SnackbarHost 自动显示在其上方，不再遮挡
+        bottomBar = {
+            Button(
+                onClick = viewModel::onSyncClick,
+                enabled = state.configured && !state.syncing,
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(16.dp),
+            ) {
+                Text(if (state.syncing) "同步中…" else "立即同步")
+            }
+        },
+    ) { padding ->
         Column(
             modifier = Modifier
                 .fillMaxSize()
@@ -177,16 +197,6 @@ fun HistoryScreen(
                         }
                     }
                 }
-            }
-
-            Button(
-                onClick = viewModel::onSyncClick,
-                enabled = state.configured && !state.syncing,
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(16.dp),
-            ) {
-                Text(if (state.syncing) "同步中…" else "立即同步")
             }
         }
     }
