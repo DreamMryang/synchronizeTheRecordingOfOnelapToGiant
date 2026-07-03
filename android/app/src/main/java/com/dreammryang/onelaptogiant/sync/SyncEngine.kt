@@ -64,6 +64,76 @@ class SyncEngine(
         }
     }
 
+    /** 历史界面对单条失败记录发起的手动重试；PROCESS_FAILED 不可重试（重传大概率无效） */
+    suspend fun retryRecord(recordId: Long): SyncOutcome {
+        if (!mutex.tryLock()) {
+            Timber.i("已有同步在运行，跳过本次重试")
+            return SyncOutcome.Skipped
+        }
+        try {
+            val record = requireNotNull(recordDao.getById(recordId)) { "记录不存在: $recordId" }
+            check(record.status == RecordStatus.DOWNLOAD_FAILED || record.status == RecordStatus.UPLOAD_FAILED) {
+                "仅下载失败/上传失败记录可重试，当前状态: ${record.status}"
+            }
+            val sessionId = sessionDao.insert(
+                SyncSessionEntity(
+                    triggerType = TriggerType.MANUAL,
+                    status = SessionStatus.RUNNING,
+                    startedAt = clock(),
+                )
+            )
+            try {
+                _progress.value = SyncProgress(SyncStep.DOWNLOADING, 0, 1)
+                val localFile = File(fitDir, record.fitUrl)
+                var downloadedCount = 0
+                val file = if (record.status == RecordStatus.UPLOAD_FAILED && localFile.exists()) {
+                    localFile
+                } else {
+                    onelapTokens.withAuthRetry { onelap.downloadFit(it, record.fitUrl, fitDir) }
+                        .also { downloadedCount = 1 }
+                }
+                var current = record.copy(
+                    status = RecordStatus.DOWNLOADED,
+                    sessionId = sessionId,
+                    fileSize = file.length(),
+                    downloadTime = if (downloadedCount == 1) clock() else record.downloadTime,
+                    errorMsg = null,
+                    updatedAt = clock(),
+                )
+                recordDao.update(current)
+
+                _progress.value = SyncProgress(SyncStep.UPLOADING, 0, 1)
+                val ok = giantTokens.withAuthRetry { giant.uploadFits(it, listOf(file)) }
+                current = current.copy(
+                    status = if (ok) RecordStatus.SYNCED else RecordStatus.UPLOAD_FAILED,
+                    syncTime = if (ok) clock() else current.syncTime,
+                    errorMsg = if (ok) null else "上传失败",
+                    updatedAt = clock(),
+                )
+                recordDao.update(current)
+
+                val status = if (ok) SessionStatus.SUCCESS else SessionStatus.PARTIAL
+                finishSession(sessionId, status, 1, downloadedCount, if (ok) 1 else 0, if (ok) 0 else 1)
+                return SyncOutcome.Finished(sessionId, status)
+            } catch (e: Exception) {
+                Timber.e(e, "手动重试失败: recordId=%d", recordId)
+                sessionDao.getById(sessionId)?.let {
+                    sessionDao.update(
+                        it.copy(
+                            status = SessionStatus.FAILED,
+                            finishedAt = clock(),
+                            errorMsg = e.message ?: e.javaClass.simpleName,
+                        )
+                    )
+                }
+                return SyncOutcome.Finished(sessionId, SessionStatus.FAILED)
+            }
+        } finally {
+            _progress.value = null
+            mutex.unlock()
+        }
+    }
+
     private suspend fun runSession(trigger: TriggerType): SyncOutcome.Finished {
         val sessionId = sessionDao.insert(
             SyncSessionEntity(triggerType = trigger, status = SessionStatus.RUNNING, startedAt = clock())
