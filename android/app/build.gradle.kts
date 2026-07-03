@@ -42,7 +42,12 @@ android {
 
     buildTypes {
         release {
-            isMinifyEnabled = false
+            isMinifyEnabled = true
+            isShrinkResources = true
+            proguardFiles(
+                getDefaultProguardFile("proguard-android-optimize.txt"),
+                "proguard-rules.pro",
+            )
             // 缺密钥/密码的环境（如他人机器）自动退化为未签名 release，不阻断构建
             signingConfig = signingConfigs.findByName("release")
         }
