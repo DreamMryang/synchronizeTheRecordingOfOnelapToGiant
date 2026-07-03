@@ -60,16 +60,36 @@ class SettingsViewModel(
         viewModelScope.launch {
             val s = _uiState.value
             val days = s.recentDays.toIntOrNull()?.coerceIn(1, 365) ?: 30
-            credentials.saveOnelap(s.onelapAccount.trim(), s.onelapPassword)
-            credentials.saveGiant(s.giantUsername.trim(), s.giantPassword)
             settings.setRecentDays(days)
             settings.setIntervalHours(s.intervalHours)
             settings.setWifiOnly(s.wifiOnly)
             // 首次配置齐全自动注册；后续改间隔/网络约束即时生效（UPDATE 策略重排）；间隔选「关闭」则取消周期任务
-            if (credentials.isConfigured()) {
-                if (s.intervalHours == INTERVAL_OFF) cancelSchedule() else schedule(s.intervalHours, s.wifiOnly)
-            }
+            rescheduleIfConfigured(s.intervalHours, s.wifiOnly)
             _uiState.value = s.copy(recentDays = days.toString())
             _saved.emit(Unit)
         }
+
+    fun saveOnelapCredentials(account: String, password: String): Job =
+        viewModelScope.launch {
+            credentials.saveOnelap(account.trim(), password)
+            val s = _uiState.value
+            _uiState.value = s.copy(onelapAccount = account.trim(), onelapPassword = password)
+            rescheduleIfConfigured(s.intervalHours, s.wifiOnly)
+            _saved.emit(Unit)
+        }
+
+    fun saveGiantCredentials(username: String, password: String): Job =
+        viewModelScope.launch {
+            credentials.saveGiant(username.trim(), password)
+            val s = _uiState.value
+            _uiState.value = s.copy(giantUsername = username.trim(), giantPassword = password)
+            rescheduleIfConfigured(s.intervalHours, s.wifiOnly)
+            _saved.emit(Unit)
+        }
+
+    private fun rescheduleIfConfigured(intervalHours: Int, wifiOnly: Boolean) {
+        if (credentials.isConfigured()) {
+            if (intervalHours == INTERVAL_OFF) cancelSchedule() else schedule(intervalHours, wifiOnly)
+        }
+    }
 }

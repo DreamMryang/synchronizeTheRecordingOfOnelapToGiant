@@ -84,23 +84,46 @@ class SettingsViewModelTest {
     }
 
     @Test
-    fun `保存写入存储并清旧 token 且重排调度`() = runTest {
-        tokenStore.set(Platform.ONELAP, "old-token")
+    fun `弹窗确定保存账号即写入并清对应token`() = runTest {
+        tokenStore.set(Platform.ONELAP, "old-onelap-token")
+        tokenStore.set(Platform.GIANT, "old-giant-token")
         val vm = vm()
         vm.uiState.first { it.loaded }
-        vm.update {
-            it.copy(
-                onelapAccount = "a", onelapPassword = "b",
-                giantUsername = "c", giantPassword = "d",
-                recentDays = "15", intervalHours = 3, wifiOnly = true,
-            )
-        }
+
+        vm.saveOnelapCredentials("a", "b").join()
+
+        assertEquals("a", credentials.onelapAccount)
+        assertEquals("b", credentials.onelapPassword)
+        assertNull(tokenStore.get(Platform.ONELAP)) // 改账号清对应 token
+        assertEquals("old-giant-token", tokenStore.get(Platform.GIANT)) // 未涉及的平台 token 保留
+        assertTrue(scheduled.isEmpty()) // 捷安特尚未配置，不调度
+
+        vm.saveGiantCredentials("c", "d").join()
+
+        assertEquals("c", credentials.giantUsername)
+        assertEquals("d", credentials.giantPassword)
+        assertNull(tokenStore.get(Platform.GIANT))
+        assertEquals(listOf(6 to false), scheduled) // 四项齐全，按当前间隔（默认 6）调度
+    }
+
+    @Test
+    fun `页面保存只写同步选项不动凭证`() = runTest {
+        credentials.saveOnelap("a", "b")
+        credentials.saveGiant("c", "d")
+        tokenStore.set(Platform.ONELAP, "onelap-token")
+        tokenStore.set(Platform.GIANT, "giant-token")
+        val vm = vm()
+        vm.uiState.first { it.loaded }
+        vm.update { it.copy(recentDays = "15", intervalHours = 3, wifiOnly = true) }
 
         vm.save().join()
 
         assertEquals("a", credentials.onelapAccount)
+        assertEquals("b", credentials.onelapPassword)
+        assertEquals("c", credentials.giantUsername)
         assertEquals("d", credentials.giantPassword)
-        assertNull(tokenStore.get(Platform.ONELAP)) // 改账号清对应 token
+        assertEquals("onelap-token", tokenStore.get(Platform.ONELAP)) // 凭证未变，token 不清
+        assertEquals("giant-token", tokenStore.get(Platform.GIANT))
         assertEquals(15, settings.recentDays.first())
         assertEquals(3, settings.intervalHours.first())
         assertTrue(settings.wifiOnly.first())
@@ -111,24 +134,20 @@ class SettingsViewModelTest {
     fun `账号不全时保存不注册调度`() = runTest {
         val vm = vm()
         vm.uiState.first { it.loaded }
-        vm.update { it.copy(onelapAccount = "a", onelapPassword = "b") } // 捷安特留空
 
-        vm.save().join()
+        vm.saveOnelapCredentials("a", "b").join() // 捷安特未配
 
         assertTrue(scheduled.isEmpty())
+        assertEquals(0, cancelCount)
     }
 
     @Test
     fun `间隔选关闭时取消调度而不注册`() = runTest {
+        credentials.saveOnelap("a", "b")
+        credentials.saveGiant("c", "d")
         val vm = vm()
         vm.uiState.first { it.loaded }
-        vm.update {
-            it.copy(
-                onelapAccount = "a", onelapPassword = "b",
-                giantUsername = "c", giantPassword = "d",
-                intervalHours = INTERVAL_OFF,
-            )
-        }
+        vm.update { it.copy(intervalHours = INTERVAL_OFF) }
 
         vm.save().join()
 
@@ -140,12 +159,7 @@ class SettingsViewModelTest {
     fun `非法天数回落默认 30`() = runTest {
         val vm = vm()
         vm.uiState.first { it.loaded }
-        vm.update {
-            it.copy(
-                onelapAccount = "a", onelapPassword = "b",
-                giantUsername = "c", giantPassword = "d", recentDays = "abc",
-            )
-        }
+        vm.update { it.copy(recentDays = "abc") }
 
         vm.save().join()
 
