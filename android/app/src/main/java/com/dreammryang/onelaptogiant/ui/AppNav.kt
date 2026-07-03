@@ -1,0 +1,127 @@
+package com.dreammryang.onelaptogiant.ui
+
+import androidx.compose.foundation.layout.padding
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.History
+import androidx.compose.material.icons.filled.Home
+import androidx.compose.material.icons.filled.Settings
+import androidx.compose.material3.Icon
+import androidx.compose.material3.NavigationBar
+import androidx.compose.material3.NavigationBarItem
+import androidx.compose.material3.Scaffold
+import androidx.compose.material3.Text
+import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.lifecycle.viewmodel.compose.viewModel
+import androidx.lifecycle.viewmodel.initializer
+import androidx.lifecycle.viewmodel.viewModelFactory
+import androidx.navigation.NavType
+import androidx.navigation.compose.NavHost
+import androidx.navigation.compose.composable
+import androidx.navigation.compose.currentBackStackEntryAsState
+import androidx.navigation.compose.rememberNavController
+import androidx.navigation.navArgument
+import com.dreammryang.onelaptogiant.di.AppContainer
+import com.dreammryang.onelaptogiant.ui.history.HistoryScreen
+import com.dreammryang.onelaptogiant.ui.history.HistoryViewModel
+import com.dreammryang.onelaptogiant.ui.history.SessionDetailScreen
+import com.dreammryang.onelaptogiant.ui.history.SessionDetailViewModel
+import com.dreammryang.onelaptogiant.ui.home.HomeScreen
+import com.dreammryang.onelaptogiant.ui.home.HomeViewModel
+import com.dreammryang.onelaptogiant.ui.settings.SettingsScreen
+import com.dreammryang.onelaptogiant.ui.settings.SettingsViewModel
+
+private data class TopDest(val route: String, val label: String, val icon: ImageVector)
+
+private val TOP_DESTS = listOf(
+    TopDest("home", "首页", Icons.Filled.Home),
+    TopDest("history", "历史", Icons.Filled.History),
+    TopDest("settings", "设置", Icons.Filled.Settings),
+)
+
+@Composable
+fun AppNav(container: AppContainer) {
+    val navController = rememberNavController()
+    val backStackEntry by navController.currentBackStackEntryAsState()
+    val currentRoute = backStackEntry?.destination?.route
+
+    Scaffold(
+        bottomBar = {
+            NavigationBar {
+                TOP_DESTS.forEach { dest ->
+                    NavigationBarItem(
+                        selected = currentRoute == dest.route ||
+                            (dest.route == "history" && currentRoute?.startsWith("session/") == true),
+                        onClick = {
+                            navController.navigate(dest.route) {
+                                popUpTo(navController.graph.startDestinationId) { saveState = true }
+                                launchSingleTop = true
+                                restoreState = true
+                            }
+                        },
+                        icon = { Icon(dest.icon, contentDescription = dest.label) },
+                        label = { Text(dest.label) },
+                    )
+                }
+            }
+        },
+    ) { padding ->
+        NavHost(
+            navController = navController,
+            startDestination = "home",
+            modifier = Modifier.padding(padding),
+        ) {
+            composable("home") {
+                val vm: HomeViewModel = viewModel(factory = viewModelFactory {
+                    initializer {
+                        HomeViewModel(
+                            configured = container.credentialStore.configured,
+                            progress = container.syncEngine.progress,
+                            lastSession = container.database.sessionDao().observeLatestFinished(),
+                            processFailedCount = container.database.recordDao().observeProcessFailedCount(),
+                            onSyncRequested = { container.syncScheduler.triggerManual() },
+                        )
+                    }
+                })
+                HomeScreen(vm, onGoSettings = { navController.navigate("settings") })
+            }
+            composable("history") {
+                val vm: HistoryViewModel = viewModel(factory = viewModelFactory {
+                    initializer { HistoryViewModel(container.database.sessionDao().observeAll()) }
+                })
+                HistoryScreen(vm, onOpenSession = { id -> navController.navigate("session/$id") })
+            }
+            composable(
+                route = "session/{sessionId}",
+                arguments = listOf(navArgument("sessionId") { type = NavType.LongType }),
+            ) { entry ->
+                val sessionId = entry.arguments!!.getLong("sessionId")
+                val vm: SessionDetailViewModel = viewModel(factory = viewModelFactory {
+                    initializer {
+                        SessionDetailViewModel(
+                            records = container.database.recordDao().observeBySession(sessionId),
+                            retry = { recordId -> container.syncEngine.retryRecord(recordId) },
+                        )
+                    }
+                })
+                SessionDetailScreen(vm)
+            }
+            composable("settings") {
+                val vm: SettingsViewModel = viewModel(factory = viewModelFactory {
+                    initializer {
+                        SettingsViewModel(
+                            settings = container.settingsRepository,
+                            credentials = container.credentialStore,
+                            schedule = { hours, wifiOnly ->
+                                container.syncScheduler.schedulePeriodic(hours, wifiOnly)
+                            },
+                        )
+                    }
+                })
+                SettingsScreen(vm)
+            }
+        }
+    }
+}
