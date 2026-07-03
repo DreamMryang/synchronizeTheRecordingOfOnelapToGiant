@@ -73,18 +73,21 @@ class OnelapApiTest {
     fun `活动列表两阶段查询 total 大于首页时二次全量拉取`() = runBlocking {
         server.enqueue(
             MockResponse().setBody(
-                """{"data":{"pagination":{"total":3},"list":[{"id":101},{"id":102}]}}"""
+                """{"data":{"pagination":{"total":3},"list":[{"id":"6a45f39dc323b737cc09a3a1"},{"id":"6a45f39dc323b737cc09a3a2"}]}}"""
             )
         )
         server.enqueue(
             MockResponse().setBody(
-                """{"data":{"pagination":{"total":3},"list":[{"id":101},{"id":102},{"id":103}]}}"""
+                """{"data":{"pagination":{"total":3},"list":[{"id":"6a45f39dc323b737cc09a3a1"},{"id":"6a45f39dc323b737cc09a3a2"},{"id":"6a45f39dc323b737cc09a3a3"}]}}"""
             )
         )
 
         val ids = api.listActivityIds("tok", "2026-06-01", "2026-07-01")
 
-        assertEquals(listOf("101", "102", "103"), ids)
+        assertEquals(
+            listOf("6a45f39dc323b737cc09a3a1", "6a45f39dc323b737cc09a3a2", "6a45f39dc323b737cc09a3a3"),
+            ids,
+        )
         val first = server.takeRequest().body.readUtf8()
         val second = server.takeRequest().body.readUtf8()
         assertTrue(first.contains("\"limit\":20"))
@@ -95,10 +98,10 @@ class OnelapApiTest {
     fun `活动列表 total 不超过首页时只请求一次`() = runBlocking {
         server.enqueue(
             MockResponse().setBody(
-                """{"data":{"pagination":{"total":1},"list":[{"id":7}]}}"""
+                """{"data":{"pagination":{"total":1},"list":[{"id":"6a45f39dc323b737cc09a3a7"}]}}"""
             )
         )
-        assertEquals(listOf("7"), api.listActivityIds("tok", "2026-06-01", "2026-07-01"))
+        assertEquals(listOf("6a45f39dc323b737cc09a3a7"), api.listActivityIds("tok", "2026-06-01", "2026-07-01"))
         assertEquals(1, server.requestCount)
     }
 

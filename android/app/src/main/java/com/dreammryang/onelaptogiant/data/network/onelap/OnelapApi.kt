@@ -33,7 +33,7 @@ data class RideListData(val pagination: RidePagination? = null, val list: List<R
 data class RidePagination(val total: Int = 0)
 
 @Serializable
-data class RideItem(val id: Long)
+data class RideItem(val id: String) // 24 位十六进制字符串（2026-07 联调实测），见 docs/api/onelap.md §2
 
 @Serializable
 data class RideDetailResponse(val data: RideDetailData? = null)
@@ -89,7 +89,7 @@ class OnelapApi(
         } else {
             first.list
         }
-        (items ?: emptyList()).map { it.id.toString() }
+        (items ?: emptyList()).map { it.id }
     }
 
     private fun queryList(token: String, limit: Int, startDate: String, endDate: String): RideListData {

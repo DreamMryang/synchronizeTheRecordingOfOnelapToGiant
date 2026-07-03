@@ -39,6 +39,8 @@ Authorization: <token>
 
 **响应：** `data.pagination.total` 为总条数，`data.list` 为活动数组（含活动 `id`）。
 
+**`id` 为 24 位十六进制字符串**（形如 `"6a45f39dc323b737cc09a3a8"`，疑似 MongoDB ObjectId；2026-07 Android 端联调实测确认），各端解析时不得按数字处理。
+
 惯用调用法：先 `limit=20` 调一次取 `total`，再以 `total` 为 `limit` 一次性取回全部。
 
 ## 3. 活动详情
