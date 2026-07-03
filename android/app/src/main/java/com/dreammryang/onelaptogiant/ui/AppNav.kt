@@ -3,7 +3,6 @@ package com.dreammryang.onelaptogiant.ui
 import androidx.compose.foundation.layout.padding
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.History
-import androidx.compose.material.icons.filled.Home
 import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material3.Icon
 import androidx.compose.material3.NavigationBar
@@ -28,15 +27,12 @@ import com.dreammryang.onelaptogiant.ui.history.HistoryScreen
 import com.dreammryang.onelaptogiant.ui.history.HistoryViewModel
 import com.dreammryang.onelaptogiant.ui.history.SessionDetailScreen
 import com.dreammryang.onelaptogiant.ui.history.SessionDetailViewModel
-import com.dreammryang.onelaptogiant.ui.home.HomeScreen
-import com.dreammryang.onelaptogiant.ui.home.HomeViewModel
 import com.dreammryang.onelaptogiant.ui.settings.SettingsScreen
 import com.dreammryang.onelaptogiant.ui.settings.SettingsViewModel
 
 private data class TopDest(val route: String, val label: String, val icon: ImageVector)
 
 private val TOP_DESTS = listOf(
-    TopDest("home", "首页", Icons.Filled.Home),
     TopDest("history", "历史", Icons.Filled.History),
     TopDest("settings", "设置", Icons.Filled.Settings),
 )
@@ -70,28 +66,26 @@ fun AppNav(container: AppContainer) {
     ) { padding ->
         NavHost(
             navController = navController,
-            startDestination = "home",
+            startDestination = "history",
             modifier = Modifier.padding(padding),
         ) {
-            composable("home") {
-                val vm: HomeViewModel = viewModel(factory = viewModelFactory {
+            composable("history") {
+                val vm: HistoryViewModel = viewModel(factory = viewModelFactory {
                     initializer {
-                        HomeViewModel(
+                        HistoryViewModel(
+                            sessions = container.database.sessionDao().observeAll(),
                             configured = container.credentialStore.configured,
                             progress = container.syncEngine.progress,
-                            lastSession = container.database.sessionDao().observeLatestFinished(),
                             processFailedCount = container.database.recordDao().observeProcessFailedCount(),
                             onSyncRequested = { container.syncScheduler.triggerManual() },
                         )
                     }
                 })
-                HomeScreen(vm, onGoSettings = { navController.navigate("settings") })
-            }
-            composable("history") {
-                val vm: HistoryViewModel = viewModel(factory = viewModelFactory {
-                    initializer { HistoryViewModel(container.database.sessionDao().observeAll()) }
-                })
-                HistoryScreen(vm, onOpenSession = { id -> navController.navigate("session/$id") })
+                HistoryScreen(
+                    vm,
+                    onOpenSession = { id -> navController.navigate("session/$id") },
+                    onGoSettings = { navController.navigate("settings") },
+                )
             }
             composable(
                 route = "session/{sessionId}",

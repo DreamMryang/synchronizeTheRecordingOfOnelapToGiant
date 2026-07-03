@@ -1,4 +1,4 @@
-package com.dreammryang.onelaptogiant.ui.home
+package com.dreammryang.onelaptogiant.ui.history
 
 import com.dreammryang.onelaptogiant.data.db.SessionStatus
 import com.dreammryang.onelaptogiant.data.db.SyncSessionEntity
@@ -21,7 +21,7 @@ import org.junit.Before
 import org.junit.Test
 
 @OptIn(ExperimentalCoroutinesApi::class)
-class HomeViewModelTest {
+class HistoryViewModelTest {
 
     @Before
     fun setup() {
@@ -34,15 +34,15 @@ class HomeViewModelTest {
     }
 
     @Test
-    fun `聚合四路输入为 UiState`() = runTest {
+    fun `聚合五路输入为 UiState`() = runTest {
         val session = SyncSessionEntity(
             id = 1, triggerType = TriggerType.AUTO, status = SessionStatus.SUCCESS, startedAt = 1L,
         )
         var triggered = 0
-        val vm = HomeViewModel(
+        val vm = HistoryViewModel(
+            sessions = flowOf(listOf(session)),
             configured = flowOf(true),
             progress = flowOf(SyncProgress(SyncStep.DOWNLOADING, 1, 3)),
-            lastSession = flowOf(session),
             processFailedCount = flowOf(2),
             onSyncRequested = { triggered++ },
         )
@@ -51,7 +51,8 @@ class HomeViewModelTest {
 
         assertTrue(state.syncing)
         assertEquals(SyncStep.DOWNLOADING, state.progress!!.step)
-        assertEquals(1L, state.lastSession!!.id)
+        assertEquals(1, state.sessions.size)
+        assertEquals(1L, state.sessions[0].id)
         assertEquals(2, state.processFailedCount)
 
         vm.onSyncClick()
@@ -59,10 +60,20 @@ class HomeViewModelTest {
     }
 
     @Test
-    fun `默认状态未配置且空闲`() = runTest {
-        val vm = HomeViewModel(flowOf(false), flowOf(null), flowOf(null), flowOf(0)) {}
+    fun `默认状态未配置且空闲空列表`() = runTest {
+        val vm = HistoryViewModel(flowOf(emptyList()), flowOf(false), flowOf(null), flowOf(0)) {}
         val state = vm.uiState.first()
         assertFalse(state.configured)
         assertFalse(state.syncing)
+        assertTrue(state.sessions.isEmpty())
+    }
+
+    @Test
+    fun `onSyncClick 触发回调`() = runTest {
+        var triggered = 0
+        val vm = HistoryViewModel(flowOf(emptyList()), flowOf(true), flowOf(null), flowOf(0)) { triggered++ }
+        vm.onSyncClick()
+        vm.onSyncClick()
+        assertEquals(2, triggered)
     }
 }
