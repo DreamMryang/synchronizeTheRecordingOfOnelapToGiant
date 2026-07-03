@@ -40,19 +40,19 @@ class AppContainer(private val app: Application) {
 
     val onelapTokens: TokenManager by lazy {
         TokenManager(Platform.ONELAP, tokenStore) {
-            onelapApi.login(
-                requireNotNull(credentialStore.onelapAccount) { "顽鹿账号未配置" },
-                requireNotNull(credentialStore.onelapPassword) { "顽鹿密码未配置" },
-            )
+            val account = credentialStore.onelapAccount
+            val password = credentialStore.onelapPassword
+            require(!account.isNullOrBlank() && !password.isNullOrBlank()) { "顽鹿账号未配置" }
+            onelapApi.login(account, password)
         }
     }
 
     val giantTokens: TokenManager by lazy {
         TokenManager(Platform.GIANT, tokenStore) {
-            giantApi.login(
-                requireNotNull(credentialStore.giantUsername) { "捷安特账号未配置" },
-                requireNotNull(credentialStore.giantPassword) { "捷安特密码未配置" },
-            )
+            val account = credentialStore.giantUsername
+            val password = credentialStore.giantPassword
+            require(!account.isNullOrBlank() && !password.isNullOrBlank()) { "捷安特账号未配置" }
+            giantApi.login(account, password)
         }
     }
 

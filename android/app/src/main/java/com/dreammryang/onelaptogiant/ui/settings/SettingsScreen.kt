@@ -194,8 +194,8 @@ private fun CredentialDialog(
     onConfirm: (account: String, password: String) -> Unit,
     onDismiss: () -> Unit,
 ) {
-    var account by remember { mutableStateOf(initialAccount) }
-    var password by remember { mutableStateOf(initialPassword) }
+    var account by remember(initialAccount) { mutableStateOf(initialAccount) }
+    var password by remember(initialPassword) { mutableStateOf(initialPassword) }
 
     AlertDialog(
         onDismissRequest = onDismiss,
@@ -220,7 +220,10 @@ private fun CredentialDialog(
             }
         },
         confirmButton = {
-            TextButton(onClick = { onConfirm(account, password) }) { Text("确定") }
+            TextButton(
+                onClick = { onConfirm(account, password) },
+                enabled = account.isNotBlank() && password.isNotBlank(),
+            ) { Text("确定") }
         },
         dismissButton = {
             TextButton(onClick = onDismiss) { Text("取消") }
