@@ -75,11 +75,12 @@ public class HttpClientUtil {
                 }
             }
             try (CloseableHttpResponse response = HTTP_CLIENT.execute(httpGet)) {
-                if (response.getStatusLine().getStatusCode() == 200) {
+                int status = response.getStatusLine().getStatusCode();
+                if (status == 200) {
                     return EntityUtils.toString(response.getEntity(), "UTF-8");
-                } else {
-                    throw new RuntimeException("GET请求返回状态码异常：" + response.getStatusLine().getStatusCode() + "，URL：" + url);
                 }
+                throwByStatus(status, url);
+                return null; // 不可达（throwByStatus 必抛）
             }
         } catch (IOException | URISyntaxException e) {
             log.error("GET请求失败：{}", url, e);
@@ -96,14 +97,29 @@ public class HttpClientUtil {
         }
         try {
             try (CloseableHttpResponse response = HTTP_CLIENT.execute(httpGet)) {
+                int status = response.getStatusLine().getStatusCode();
+                // 必须先判状态码：否则 token 失效时会把错误页字节存成 FIT 文件（多端 token 缓存改造前的历史缺陷）
+                if (status != 200) {
+                    throwByStatus(status, url);
+                }
                 byte[] data = EntityUtils.toByteArray(response.getEntity());
                 try (FileOutputStream fos = new FileOutputStream(savePath)) {
                     fos.write(data);
                 }
             }
+        } catch (AuthFailedException e) {
+            throw e; // 认证失效原样上抛，供 TokenCache 续登重试
         } catch (IOException e) {
             log.error("文件下载失败：{}", url, e);
             throw new RuntimeException("文件下载失败：" + url, e);
         }
+    }
+
+    /** 非 200 响应按状态码分流：401/403 视为认证失效，其余为一般请求错误。 */
+    private static void throwByStatus(int status, String url) {
+        if (status == 401 || status == 403) {
+            throw new AuthFailedException("请求返回 " + status + "，认证失效，URL：" + url);
+        }
+        throw new RuntimeException("请求返回状态码异常：" + status + "，URL：" + url);
     }
 }
