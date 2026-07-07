@@ -16,6 +16,8 @@ public class SyncConstants {
     public static final String GIANT_LOGIN_URL = "https://ridelife.giant.com.cn/index.php/api/login";
     /** 捷安特骑行同步/上传 FIT 文件的接口地址 */
     public static final String GIANT_UPLOAD_FIT_URL = "https://ridelife.giant.com.cn/index.php/api/upload_fit";
+    /** 捷安特骑行已上传文件列表接口（全量，多端去重事实源，见 docs/api/giant.md §3） */
+    public static final String GIANT_ALL_UPLOAD_URL = "https://ridelife.giant.com.cn/index.php/api/all_upload";
 
     /** 捷安特接口要求的设备类型参数 */
     public static final String GIANT_DEVICE = "bike_computer";

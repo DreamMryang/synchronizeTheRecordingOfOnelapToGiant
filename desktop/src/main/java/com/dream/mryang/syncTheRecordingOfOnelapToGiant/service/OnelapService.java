@@ -2,11 +2,8 @@ package com.dream.mryang.syncTheRecordingOfOnelapToGiant.service;
 
 import com.alibaba.fastjson2.JSONArray;
 import com.alibaba.fastjson2.JSONObject;
-import com.dream.mryang.syncTheRecordingOfOnelapToGiant.utils.ConfigManager;
-import com.dream.mryang.syncTheRecordingOfOnelapToGiant.utils.HttpClientUtil;
-import com.dream.mryang.syncTheRecordingOfOnelapToGiant.utils.SyncConstants;
 import com.dream.mryang.syncTheRecordingOfOnelapToGiant.db.SyncRecordDao;
-import java.util.Set;
+import com.dream.mryang.syncTheRecordingOfOnelapToGiant.utils.*;
 import org.apache.commons.codec.digest.DigestUtils;
 import org.apache.http.entity.ContentType;
 import org.apache.http.entity.StringEntity;
@@ -18,22 +15,26 @@ import java.nio.charset.StandardCharsets;
 import java.time.Instant;
 import java.time.LocalDate;
 import java.time.format.DateTimeFormatter;
-import java.util.ArrayList;
-import java.util.Base64;
-import java.util.HashMap;
-import java.util.UUID;
+import java.util.*;
+import java.util.concurrent.atomic.AtomicInteger;
 
 public class OnelapService {
     private static final Logger log = LoggerFactory.getLogger(OnelapService.class);
+    private static final DateTimeFormatter DATE_FMT = DateTimeFormatter.ofPattern("yyyy-MM-dd");
 
-    public ArrayList<String> downloadTheOnelapFitFile() {
-        // 1. 登录
+    /**
+     * token 缓存：仅首次登录，失效由业务响应判定后续登重试。
+     */
+    private final TokenCache tokenCache = new TokenCache(OnelapService::login);
+
+    /**
+     * 顽鹿签名登录，取 data[0].token。返回 null/空由 {@link TokenCache} 判为登录失败。
+     */
+    private static String login() {
         String nonce = UUID.randomUUID().toString().replace("-", "").substring(16);
         String timestamp = String.valueOf(Instant.now().getEpochSecond());
-
         String account = ConfigManager.getProperty("onelap.account");
         String passwordParam = DigestUtils.md5Hex(ConfigManager.getProperty("onelap.password"));
-
         String sign = DigestUtils.md5Hex("account=" + account + "&nonce=" + nonce + "&password=" + passwordParam +
                 "&timestamp=" + timestamp + "&key=" + ConfigManager.getProperty("onelap.sign.key"));
 
@@ -46,91 +47,141 @@ public class OnelapService {
         loginReq.put("account", account);
         loginReq.put("password", passwordParam);
 
-        String loginReturnJsonString = HttpClientUtil.doPost(SyncConstants.ONELAP_LOGIN_URL,
+        String json = HttpClientUtil.doPost(SyncConstants.ONELAP_LOGIN_URL,
                 new StringEntity(loginReq.toJSONString(), ContentType.APPLICATION_JSON), loginHeaders);
-        log.info("调 顽鹿运动登录 接口响应值：{}", loginReturnJsonString);
-
-        JSONObject loginReturnData = JSONObject.parseObject(loginReturnJsonString);
-        JSONArray data = loginReturnData.getJSONArray("data");
+        log.info("调 顽鹿运动登录 接口响应值：{}", json);
+        JSONArray data = JSONObject.parseObject(json).getJSONArray("data");
         if (data == null || data.isEmpty()) {
-            throw new RuntimeException("顽鹿运动登录失败，响应数据为空：" + loginReturnJsonString);
+            return null;
         }
-        JSONObject loginData = data.getJSONObject(0);
-        String token = loginData.getString("token");
+        return data.getJSONObject(0).getString("token");
+    }
 
-        // 2. 计算查询日期范围
+    private static HashMap<String, String> authHeader(String token) {
+        HashMap<String, String> h = new HashMap<>();
+        h.put("Authorization", token);
+        return h;
+    }
+
+    /**
+     * 下载顽鹿近 N 天中「捷安特服务端尚无记录」的活动 FIT 文件。
+     * <p>
+     * 去重仅依据服务端集合 {@code uploadedOnServer}（多端事实源），本地库不再参与判断。
+     * 本地已下载/上传失败且文件仍在的直接复用，省一次下载。记账用 upsert 以支持自然重试。
+     *
+     * @param uploadedOnServer 捷安特 all_upload 返回的已上传文件名集合
+     * @return 本次待上传的 fitUrl 列表（已在本地就绪）
+     */
+    public ArrayList<String> downloadTheOnelapFitFile(Set<String> uploadedOnServer) {
+        String account = ConfigManager.getProperty("onelap.account");
         int syncDays = Integer.parseInt(ConfigManager.getProperty("sync.recent.days"));
-        DateTimeFormatter formatter = DateTimeFormatter.ofPattern("yyyy-MM-dd");
-        String endDateStr = LocalDate.now().format(formatter);
-        String startDateStr = LocalDate.now().minusDays(syncDays).format(formatter);
+        String endDateStr = LocalDate.now().format(DATE_FMT);
+        String startDateStr = LocalDate.now().minusDays(syncDays).format(DATE_FMT);
 
-        HashMap<String, String> authHeaders = new HashMap<>();
-        authHeaders.put("Authorization", token);
+        // 1. 活动列表（先取 total 再全量）
+        JSONArray myActivities = tokenCache.withAuthRetry(token ->
+                listActivities(token, startDateStr, endDateStr));
+        if (myActivities == null || myActivities.isEmpty()) {
+            return new ArrayList<>();
+        }
 
-        // 3. 先调一次获取总记录数
+        // 2. 逐条查详情 → 服务端集合去重 → 下载/复用
+        ArrayList<String> syncFileName = new ArrayList<>();
+
+        // 已有记录跳过 计数
+        AtomicInteger existSkipCount = new AtomicInteger();
+        // fitUrl为空跳过 计数
+        AtomicInteger fitUrlCount = new AtomicInteger();
+
+        for (int i = 0; i < myActivities.size(); i++) {
+            String id = myActivities.getJSONObject(i).getString("id");
+            String fitUrl = tokenCache.withAuthRetry(token -> fetchFitUrl(token, id));
+
+            if (uploadedOnServer.contains(fitUrl)) {
+                existSkipCount.incrementAndGet();
+                continue;
+            }
+            if (fitUrl == null || fitUrl.isEmpty()) {
+                fitUrlCount.incrementAndGet();
+                continue;
+            }
+
+            File file = new File(ConfigManager.getProperty("onelap.fit.file.storage.directory") + fitUrl);
+            try {
+                if (canReuseLocal(fitUrl, file)) {
+                    log.info("文件 {} 本地已就绪，复用不重复下载", fitUrl);
+                } else {
+                    tokenCache.withAuthRetry(token -> {
+                        String base64 = Base64.getEncoder().encodeToString(fitUrl.getBytes(StandardCharsets.UTF_8));
+                        HttpClientUtil.downloadFile(SyncConstants.ONELAP_FIT_DOWNLOAD_URL + base64, authHeader(token), file);
+                        return null;
+                    });
+                }
+                SyncRecordDao.upsertDownloaded(fitUrl, account, file.length());
+                syncFileName.add(fitUrl);
+            } catch (Exception e) {
+                log.error("下载活动文件失败，跳过该条：{}", fitUrl, e);
+                SyncRecordDao.upsertDownloadFailed(fitUrl, account, e.getMessage());
+            }
+        }
+        log.info("捷安特服务端已有记录跳过数量：{}，fitUrl为空跳过数量：{}", existSkipCount.get(), fitUrlCount.get());
+        return syncFileName;
+    }
+
+    /**
+     * 本地记录为 DOWNLOADED / UPLOAD_FAILED 且文件存在且非空 → 可复用。
+     */
+    private boolean canReuseLocal(String fitUrl, File file) {
+        String status = SyncRecordDao.findStatus(fitUrl);
+        boolean reusableStatus = SyncRecordDao.STATUS_DOWNLOADED.equals(status)
+                || SyncRecordDao.STATUS_UPLOAD_FAILED.equals(status);
+        return reusableStatus && file.exists() && file.length() > 0;
+    }
+
+    /**
+     * 活动列表：先 limit=20 取 total，再以 total 为 limit 全量取回。无 data 判为认证失效。
+     */
+    private JSONArray listActivities(String token, String startDateStr, String endDateStr) {
         JSONObject listReq = new JSONObject();
         listReq.put("page", 1);
         listReq.put("limit", 20);
         listReq.put("start_date", startDateStr);
         listReq.put("end_date", endDateStr);
 
-        String firstListJson = HttpClientUtil.doPost(SyncConstants.ONELAP_ACTIVITY_LIST_URL,
-                new StringEntity(listReq.toJSONString(), ContentType.APPLICATION_JSON), authHeaders);
-        log.info("调 顽鹿运动获取历史活动列表(首次) 接口响应值：{}", firstListJson);
-
-        JSONObject pagination = JSONObject.parseObject(firstListJson).getJSONObject("data").getJSONObject("pagination");
-        int total = pagination.getIntValue("total");
+        String firstJson = HttpClientUtil.doPost(SyncConstants.ONELAP_ACTIVITY_LIST_URL,
+                new StringEntity(listReq.toJSONString(), ContentType.APPLICATION_JSON), authHeader(token));
+        log.info("调 顽鹿运动获取历史活动列表(首次) 接口响应值：{}", firstJson);
+        JSONObject firstData = JSONObject.parseObject(firstJson).getJSONObject("data");
+        if (firstData == null) {
+            throw new AuthFailedException("顽鹿活动列表响应无 data，视为认证失效：" + firstJson);
+        }
+        int total = firstData.getJSONObject("pagination").getIntValue("total");
         log.info("顽鹿运动 {} 至 {} 共 {} 条活动记录", startDateStr, endDateStr, total);
-
         if (total == 0) {
-            return new ArrayList<>();
+            return new JSONArray();
         }
 
-        // 4. 用 total 作为 limit 一次性取回全部数据
         listReq.put("limit", total);
-        String allListJson = HttpClientUtil.doPost(SyncConstants.ONELAP_ACTIVITY_LIST_URL,
-                new StringEntity(listReq.toJSONString(), ContentType.APPLICATION_JSON), authHeaders);
-        log.info("调 顽鹿运动获取历史活动列表(全量) 接口响应值：{}", allListJson);
-
-        JSONArray myActivities = JSONObject.parseObject(allListJson).getJSONObject("data").getJSONArray("list");
-        if (myActivities == null || myActivities.isEmpty()) {
-            return new ArrayList<>();
+        String allJson = HttpClientUtil.doPost(SyncConstants.ONELAP_ACTIVITY_LIST_URL,
+                new StringEntity(listReq.toJSONString(), ContentType.APPLICATION_JSON), authHeader(token));
+        log.info("调 顽鹿运动获取历史活动列表(全量) 接口响应值：{}", allJson);
+        JSONObject allData = JSONObject.parseObject(allJson).getJSONObject("data");
+        if (allData == null) {
+            throw new AuthFailedException("顽鹿活动列表(全量)响应无 data，视为认证失效：" + allJson);
         }
+        return allData.getJSONArray("list");
+    }
 
-        // 5. 逐条查询详情并下载未同步的文件（去重键改用 SQLite 记录）
-        Set<String> alreadySynced = SyncRecordDao.findAllFitUrls();
-        ArrayList<String> syncFileName = new ArrayList<>();
-
-        for (int i = 0; i < myActivities.size(); i++) {
-            JSONObject activity = myActivities.getJSONObject(i);
-            String id = activity.getString("id");
-
-            String detailJson = HttpClientUtil.doGet(SyncConstants.ONELAP_ACTIVITY_DETAIL_URL + id, null, authHeaders);
-
-            JSONObject ridingRecord = JSONObject.parseObject(detailJson).getJSONObject("data").getJSONObject("ridingRecord");
-            String fitUrl = ridingRecord.getString("fitUrl");
-
-            if (fitUrl == null || fitUrl.isEmpty()) {
-                log.warn("活动 id={} 的 fitUrl 为空，跳过", id);
-                continue;
-            }
-            if (alreadySynced.contains(fitUrl)) {
-                log.info("文件 {} 已同步，跳过", fitUrl);
-                continue;
-            }
-
-            String fitUrlBase64 = Base64.getEncoder().encodeToString(fitUrl.getBytes(StandardCharsets.UTF_8));
-            File file = new File(ConfigManager.getProperty("onelap.fit.file.storage.directory") + fitUrl);
-            try {
-                HttpClientUtil.downloadFile(SyncConstants.ONELAP_FIT_DOWNLOAD_URL + fitUrlBase64, authHeaders, file);
-                SyncRecordDao.insertDownloaded(fitUrl, account, file.length());
-                syncFileName.add(fitUrl);
-            } catch (Exception e) {
-                log.error("下载活动文件失败，跳过该条：{}", fitUrl, e);
-                SyncRecordDao.markDownloadFailed(fitUrl, account, e.getMessage());
-            }
+    /**
+     * 活动详情取 fitUrl。无 data 判为认证失效；fitUrl 可能为空（无 FIT 的活动）。
+     */
+    private String fetchFitUrl(String token, String id) {
+        String detailJson = HttpClientUtil.doGet(SyncConstants.ONELAP_ACTIVITY_DETAIL_URL + id, null, authHeader(token));
+        JSONObject data = JSONObject.parseObject(detailJson).getJSONObject("data");
+        if (data == null) {
+            throw new AuthFailedException("顽鹿活动详情响应无 data，视为认证失效：" + detailJson);
         }
-
-        return syncFileName;
+        JSONObject ridingRecord = data.getJSONObject("ridingRecord");
+        return ridingRecord == null ? null : ridingRecord.getString("fitUrl");
     }
 }

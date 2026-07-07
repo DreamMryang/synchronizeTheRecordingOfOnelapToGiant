@@ -1,8 +1,10 @@
 package com.dream.mryang.syncTheRecordingOfOnelapToGiant;
 
 import com.dream.mryang.syncTheRecordingOfOnelapToGiant.db.SyncRecordDao;
+import com.dream.mryang.syncTheRecordingOfOnelapToGiant.service.AllUploadSummary;
 import com.dream.mryang.syncTheRecordingOfOnelapToGiant.service.GiantBikeService;
 import com.dream.mryang.syncTheRecordingOfOnelapToGiant.service.OnelapService;
+import com.dream.mryang.syncTheRecordingOfOnelapToGiant.service.SyncLogic;
 import com.dream.mryang.syncTheRecordingOfOnelapToGiant.utils.ConfigManager;
 import org.apache.commons.collections4.CollectionUtils;
 import org.quartz.*;
@@ -58,18 +60,25 @@ public class Main {
     // 定义任务类
     @DisallowConcurrentExecution
     public static class TaskJob implements Job {
-        private final OnelapService onelapService = new OnelapService();
-        private final GiantBikeService giantBikeService = new GiantBikeService();
+        private static final OnelapService onelapService = new OnelapService();
+        private static final GiantBikeService giantBikeService = new GiantBikeService();
 
         @Override
         public void execute(JobExecutionContext jobExecutionContext) {
             try {
                 log.info("当前时间：{}", LocalDateTime.now().format(DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss")));
-                // 下载顽鹿运动fit文件
-                ArrayList<String> fitFileNameList = onelapService.downloadTheOnelapFitFile();
+
+                // 1. 拉取捷安特已上传列表（多端去重事实源，每次会话仅一次）
+                AllUploadSummary summary = giantBikeService.fetchAllUploadSummary();
+
+                // 2. 依据服务端结果校正本机记录（已同步 / 处理失败）
+                SyncLogic.reconcileLocal(summary);
+
+                // 3. 下载顽鹿中服务端尚无记录的活动 FIT 文件
+                ArrayList<String> fitFileNameList = onelapService.downloadTheOnelapFitFile(summary.getUploaded());
                 log.info("【预计】同步数量：{}", fitFileNameList.size());
-                
-                // fit文件同步到捷安特骑行
+
+                // 4. fit文件同步到捷安特骑行
                 if (CollectionUtils.isNotEmpty(fitFileNameList)) {
                     giantBikeService.syncFitFilesToGiantBike(fitFileNameList);
                 }
