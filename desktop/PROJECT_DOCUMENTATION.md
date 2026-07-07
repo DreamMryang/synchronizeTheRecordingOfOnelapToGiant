@@ -28,9 +28,10 @@
 
 ### 核心价值
 - ✅ **自动化同步**：无需人工干预，定时自动完成数据同步
-- ✅ **防重复机制**：通过SQLite中`fit_url`唯一键避免重复同步相同文件
+- ✅ **多端一致去重**：以捷安特`all_upload`服务端已上传列表为唯一事实源判定，多端（桌面/Android）同时运行不会重复上传（见 [跨端同步设计](../docs/design/multi-client-sync.md)）
+- ✅ **Token 缓存**：捷安特/顽鹿 token 懒失效缓存 + 自动续登重试，不再每次任务重新登录
 - ✅ **双向支持**：支持Onelap→Giant正向同步和本地文件上传到Onelap的反向功能
-- ✅ **轻量化设计**：使用嵌入式SQLite（sqlite-jdbc）做状态管理，无需外部数据库服务
+- ✅ **轻量化设计**：使用嵌入式SQLite（sqlite-jdbc）做本机记账，无需外部数据库服务
 
 ---
 
@@ -143,11 +144,13 @@ synchronizeTheRecordingOfOnelapToGiant/
 - 批量上传FIT文件
 - 响应状态验证
 
-### 4. 重复同步防护与生命周期记录
-- 使用SQLite单表`sync_record`记录，`fit_url`唯一键做去重
-- 记录完整状态：`DOWNLOADED` / `SYNCED` / `UPLOAD_FAILED` / `DOWNLOAD_FAILED`
-- 凡`fit_url`已有任意记录（含失败态）即跳过，失败不自动重试，需人工介入
-- 下载阶段单条失败只记录、不中断整个任务
+### 4. 跨端去重与生命周期记录
+- **去重以捷安特服务端为事实源**：每次会话调一次`all_upload`取回已上传文件名集合，顽鹿活动的`fitUrl`在集合中出现过（任意状态）即跳过
+- SQLite单表`sync_record`降级为**本机记账/排查层**，不再承担去重职责；状态：`DOWNLOADED` / `SYNCED` / `UPLOAD_FAILED` / `DOWNLOAD_FAILED` / `PROCESS_FAILED`
+- **失败自然重试**：下载/上传失败的文件在服务端无记录，下次会话自然重试（任一端都可能完成）；写入改为 upsert，同一`fit_url`重试不再撞唯一键
+- **处理失败标红**：服务端「已上传但处理失败」（`PROCESS_FAILED`）不自动重传，日志`ERROR`级明确输出待人工处理
+- **reconcile 校正**：每次会话开头依据`all_upload`结果校正本机`SYNCED`/`UPLOAD_FAILED`记录的真实状态
+- 下载阶段单条失败只记录、不中断整个任务；本地已下载且文件仍在则复用不重复下载
 
 ### 5. 反向上传功能
 - 支持将本地FIT文件上传到顽鹿运动
@@ -193,9 +196,16 @@ Trigger trigger2 = TriggerBuilder.newTrigger()
 #### 4. 同步记录数据访问层 (SyncRecordDao.java)
 **设计要点：**
 - SQLite常驻单连接 + WAL模式，所有公开方法`synchronized`保证线程安全
-- 单表`sync_record`，`fit_url`唯一键做去重
-- 提供`init`/`findAllFitUrls`/`insertDownloaded`/`markDownloadFailed`/`markSynced`/`markUploadFailed`等方法
-- 详细设计见 `docs/superpowers/specs/2026-06-03-sqlite-sync-record-design.md`
+- 单表`sync_record`，`fit_url`唯一键；**降级为本机记账层**，去重职责已移交捷安特服务端
+- 写入均为 upsert（`ON CONFLICT(fit_url) DO UPDATE`），支持失败后自然重试：`upsertDownloaded`/`upsertDownloadFailed`
+- reconcile 相关：`findReconcilable`（取`SYNCED`/`UPLOAD_FAILED`记录）、`updateStatus`（校正状态，首次转`SYNCED`补`sync_time`）
+- 详细设计见 `docs/superpowers/specs/2026-06-03-sqlite-sync-record-design.md` 与 `docs/superpowers/plans/2026-07-07-server-side-dedup-and-token-cache.md`
+
+#### 5. Token 缓存 (TokenCache.java) 与 all_upload 解析 (AllUploadSummary.java)
+**设计要点：**
+- `TokenCache`：懒登录缓存 token；业务调用抛`AuthFailedException`（401/403 或响应 status 异常）时清缓存 → 重新登录 → 重试一次，仍失败则上抛
+- `AllUploadSummary.parse`：解析`all_upload`，构建`uploaded`（出现过的全部文件名）与`failedProcess`（全部处理非成功的文件→状态文案）；同名多条任一「成功」即成功
+- `SyncLogic`：`reconcileTarget`纯逻辑 + `reconcileLocal`落库校正，与 Android 端同规则
 
 ### 业务流程详解
 
@@ -207,15 +217,18 @@ graph TD
     C --> D[立即执行首次同步]
     D --> E[等待定时触发]
     
-    E --> F[顽鹿运动登录]
+    E --> A1[捷安特登录+查all_upload已上传列表]
+    A1 --> A2[reconcile校正本机记录]
+    A2 --> F[顽鹿运动登录]
     F --> G[获取活动列表]
-    G --> H[过滤已同步文件]
-    H --> I[下载新的FIT文件]
-    I --> J[捷安特骑行登录]
-    J --> K[上传FIT文件]
+    G --> H[按服务端集合过滤已上传文件]
+    H --> I[下载新的FIT文件/复用本地]
+    I --> K[整批上传FIT文件到捷安特]
     K --> L[记录同步状态]
     L --> M[等待下次执行]
 ```
+
+> Token 缓存：捷安特登录仅首次发生，`all_upload`与上传复用同一 token；失效时自动续登重试一次。
 
 #### 详细步骤说明
 
@@ -241,19 +254,19 @@ headers.put("sign", sign);
 // 按日期范围查询最近 sync.recent.days 天的活动：先查一次拿 total，
 // 再用 total 作为 limit 一次性取回全部列表
 
-// 用 SQLite 中全部已记录的 fit_url 做去重（含失败态记录，一律跳过）
-Set<String> alreadySynced = SyncRecordDao.findAllFitUrls();
-if (alreadySynced.contains(fitUrl)) {
-    continue;
+// 以捷安特服务端 all_upload 集合做去重（多端事实源，本地库不参与判断）
+if (uploadedOnServer.contains(fitUrl)) {
+    continue; // 服务端已有记录，跳过
 }
 ```
 
 ##### 步骤3：文件下载与存储
 ```java
-// 携带 Authorization 头下载FIT文件；fitUrl 需 Base64 编码后拼接到下载地址
+// 本地已下载/上传失败且文件仍在则复用，否则携带 Authorization 头下载
+// （fitUrl 需 Base64 编码后拼接到下载地址）
 HttpClientUtil.downloadFile(SyncConstants.ONELAP_FIT_DOWNLOAD_URL + fitUrlBase64, authHeaders, file);
-// 成功记 DOWNLOADED，失败记 DOWNLOAD_FAILED 并继续处理下一条
-SyncRecordDao.insertDownloaded(fitUrl, account, file.length());
+// upsert 记账：成功记 DOWNLOADED（失败重试不撞唯一键），失败记 DOWNLOAD_FAILED 并继续下一条
+SyncRecordDao.upsertDownloaded(fitUrl, account, file.length());
 ```
 
 ##### 步骤4：捷安特平台上传
@@ -492,8 +505,8 @@ chmod 755 /path/to/storage/
 3. **敏感信息日志输出**：完整API响应输出到日志
 
 #### 二、功能逻辑问题
-1. **上传响应处理简单**：仅检查status==1，整批统一标记成败，无单文件粒度结果
-2. **失败不自动重试**：失败记录需人工介入处理（设计取舍，非缺陷）
+1. **上传响应处理简单**：`upload_fit`仅检查status==1，整批统一标记成败，无单文件粒度结果（真实处理结果由下次会话 reconcile 依据`all_upload`确认）
+2. **并发窗口**：两端恰好同时同步时都查到「服务端没有」，可能同时上传同一文件；概率极低且服务端允许同名多条，不影响正确性（见 [跨端同步设计](../docs/design/multi-client-sync.md) §5）
 
 #### 三、配置与部署问题
 1. **配置固化在jar内**：修改配置需重新打包
@@ -531,6 +544,7 @@ chmod 755 /path/to/storage/
 |------|------|------|------|
 | 本人登录 | https://ridelife.giant.com.cn/index.php/api/login | POST | 获取本人令牌 |
 | 文件上传 | https://ridelife.giant.com.cn/index.php/api/upload_fit | POST | 上传FIT文件 |
+| 已上传列表 | https://ridelife.giant.com.cn/index.php/api/all_upload | POST | 全量已上传文件列表（多端去重事实源） |
 
 ### 常用命令参考
 
@@ -572,7 +586,7 @@ git push origin v1.0.0
 
 ---
 
-**文档版本**：v1.1  
-**最后更新**：2026年7月  
+**文档版本**：v1.2  
+**最后更新**：2026年7月7日（跨端服务端去重 + Token 缓存改造）  
 **维护者**：yang.yang  
 **项目状态**：稳定运行中

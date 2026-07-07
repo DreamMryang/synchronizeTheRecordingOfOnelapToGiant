@@ -45,6 +45,6 @@
 
 | 端 | 内容 | 状态 |
 |---|---|---|
-| android | 按本设计实现（新建项目，见 [Android 设计文档](../../android/docs/superpowers/specs/2026-07-02-android-migration-design.md)） | 设计完成 |
-| desktop | ① 去重从本地 SQLite 改为 `all_upload` 服务端判定；② 增加 token 缓存（懒失效 + 自动续登，见接口契约文档）；③ 失败记录随服务端判定自然重试，移除「永久跳过」逻辑；④ 处理失败状态在日志中明确输出 | 待改造 |
+| android | 按本设计实现（新建项目，见 [Android 设计文档](../../android/docs/superpowers/specs/2026-07-02-android-migration-design.md)） | 已完成 |
+| desktop | ① 去重从本地 SQLite 改为 `all_upload` 服务端判定；② 增加 token 缓存（懒失效 + 自动续登，见接口契约文档）；③ 失败记录随服务端判定自然重试，移除「永久跳过」逻辑；④ 处理失败状态在日志中明确输出 | 已完成（2026-07-07，见 [实现计划](../../desktop/docs/superpowers/plans/2026-07-07-server-side-dedup-and-token-cache.md)） |
 | windows / ios | 未来按本设计 + [接口契约](../api/) 实现 | 未开始 |
