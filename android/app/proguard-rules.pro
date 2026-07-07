@@ -17,6 +17,13 @@
 -dontwarn org.bouncycastle.**
 -dontwarn org.openjsse.**
 
+# ===== DataStore Preferences 底层 protobuf-lite 靠反射按名找字段（value_ 等），字段名不可混淆 =====
+# 缺失会在首次写入时崩溃：RuntimeException: Field value_ for ... not found（真机联调实测）
+# datastore-preferences-core 是纯 jar 不携带 consumer 规则，须手动保留
+-keepclassmembers class * extends androidx.datastore.preferences.protobuf.GeneratedMessageLite {
+    <fields>;
+}
+
 # ===== security-crypto 传递依赖 Tink 引用的编译期注解（运行时不存在，安全忽略）=====
 -dontwarn com.google.errorprone.annotations.CanIgnoreReturnValue
 -dontwarn com.google.errorprone.annotations.CheckReturnValue
