@@ -26,7 +26,7 @@ android {
         minSdk = 26
         targetSdk = 35
         versionCode = 1
-        versionName = "1.0"
+        versionName = "1.0.0"
     }
 
     signingConfigs {
@@ -41,6 +41,10 @@ android {
     }
 
     buildTypes {
+        debug {
+            // 与 release 共用签名，保证两种构建签名一致可覆盖安装；缺密钥环境回退默认 debug 签名
+            signingConfigs.findByName("release")?.let { signingConfig = it }
+        }
         release {
             isMinifyEnabled = true
             isShrinkResources = true
@@ -58,6 +62,7 @@ android {
     }
     buildFeatures {
         compose = true
+        buildConfig = true
     }
     testOptions {
         unitTests {

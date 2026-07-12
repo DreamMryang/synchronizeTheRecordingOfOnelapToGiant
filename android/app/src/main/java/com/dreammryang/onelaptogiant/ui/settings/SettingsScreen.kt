@@ -9,7 +9,10 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.filled.OpenInNew
 import androidx.compose.material3.AlertDialog
+import androidx.compose.material3.Icon
 import androidx.compose.material3.Card
 import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.ExposedDropdownMenuBox
@@ -29,14 +32,20 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalUriHandler
 import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import com.dreammryang.onelaptogiant.BuildConfig
 import com.dreammryang.onelaptogiant.data.settings.INTERVAL_OFF
 import com.dreammryang.onelaptogiant.data.settings.INTERVAL_OPTIONS
+import kotlinx.coroutines.launch
+
+private const val GITHUB_URL = "https://github.com/DreamMryang/synchronizeTheRecordingOfOnelapToGiant"
 
 private enum class CredentialPlatform { ONELAP, GIANT }
 
@@ -45,6 +54,8 @@ private enum class CredentialPlatform { ONELAP, GIANT }
 fun SettingsScreen(viewModel: SettingsViewModel) {
     val state by viewModel.uiState.collectAsStateWithLifecycle()
     val snackbarHostState = remember { SnackbarHostState() }
+    val uriHandler = LocalUriHandler.current
+    val scope = rememberCoroutineScope()
     var editingPlatform by remember { mutableStateOf<CredentialPlatform?>(null) }
 
     var showClearHistoryDialog by remember { mutableStateOf(false) }
@@ -130,23 +141,23 @@ fun SettingsScreen(viewModel: SettingsViewModel) {
             verticalArrangement = Arrangement.spacedBy(12.dp),
         ) {
             SectionTitle("账号")
-            CredentialEntry(
+            SettingsEntry(
                 label = "顽鹿账号",
-                accountName = state.onelapAccount,
+                value = state.onelapAccount,
                 onClick = { editingPlatform = CredentialPlatform.ONELAP },
             )
-            CredentialEntry(
+            SettingsEntry(
                 label = "捷安特账号",
-                accountName = state.giantUsername,
+                value = state.giantUsername,
                 onClick = { editingPlatform = CredentialPlatform.GIANT },
             )
 
             HorizontalDivider(Modifier.padding(vertical = 8.dp))
 
             SectionTitle("同步选项")
-            CredentialEntry(
+            SettingsEntry(
                 label = "同步最近天数",
-                accountName = "${state.recentDays} 天",
+                value = "${state.recentDays} 天",
                 onClick = { showRecentDaysDialog = true },
             )
             IntervalDropdown(
@@ -179,6 +190,32 @@ fun SettingsScreen(viewModel: SettingsViewModel) {
                     color = MaterialTheme.colorScheme.error,
                 )
             }
+
+            HorizontalDivider(Modifier.padding(vertical = 8.dp))
+
+            SectionTitle("关于")
+            SettingsEntry(
+                label = "项目主页",
+                value = "GitHub · DreamMryang",
+                onClick = {
+                    try {
+                        uriHandler.openUri(GITHUB_URL)
+                    } catch (e: Exception) {
+                        scope.launch { snackbarHostState.showSnackbar("未找到可用浏览器") }
+                    }
+                },
+                trailing = {
+                    Icon(
+                        imageVector = Icons.AutoMirrored.Filled.OpenInNew,
+                        contentDescription = "在浏览器中打开",
+                        tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                },
+            )
+            SettingsEntry(
+                label = "版本",
+                value = BuildConfig.VERSION_NAME,
+            )
         }
     }
 }
@@ -232,15 +269,29 @@ private data class CredentialDialogSpec(
 )
 
 @Composable
-private fun CredentialEntry(label: String, accountName: String, onClick: () -> Unit) {
-    Card(modifier = Modifier.fillMaxWidth().clickable(onClick = onClick)) {
-        Column(modifier = Modifier.padding(16.dp)) {
-            Text(label, style = MaterialTheme.typography.bodyLarge)
-            Text(
-                text = accountName.ifBlank { "未配置" },
-                style = MaterialTheme.typography.bodyMedium,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-            )
+private fun SettingsEntry(
+    label: String,
+    value: String,
+    onClick: (() -> Unit)? = null,
+    trailing: (@Composable () -> Unit)? = null,
+) {
+    val cardModifier = Modifier
+        .fillMaxWidth()
+        .let { if (onClick != null) it.clickable(onClick = onClick) else it }
+    Card(modifier = cardModifier) {
+        Row(
+            modifier = Modifier.fillMaxWidth().padding(16.dp),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Column(modifier = Modifier.weight(1f)) {
+                Text(label, style = MaterialTheme.typography.bodyLarge)
+                Text(
+                    text = value.ifBlank { "未配置" },
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+            }
+            trailing?.invoke()
         }
     }
 }
