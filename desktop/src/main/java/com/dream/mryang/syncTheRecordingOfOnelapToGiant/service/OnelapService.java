@@ -22,6 +22,9 @@ public class OnelapService {
     private static final Logger log = LoggerFactory.getLogger(OnelapService.class);
     private static final DateTimeFormatter DATE_FMT = DateTimeFormatter.ofPattern("yyyy-MM-dd");
 
+    /** 活动列表首次探测请求的分页大小；total 不超过它时首次响应即全量，无需二次调用。 */
+    private static final int FIRST_PAGE_LIMIT = 20;
+
     /**
      * token 缓存：仅首次登录，失效由业务响应判定后续登重试。
      */
@@ -49,11 +52,12 @@ public class OnelapService {
 
         String json = HttpClientUtil.doPost(SyncConstants.ONELAP_LOGIN_URL,
                 new StringEntity(loginReq.toJSONString(), ContentType.APPLICATION_JSON), loginHeaders);
-        log.info("调 顽鹿运动登录 接口响应值：{}", json);
         JSONArray data = JSONObject.parseObject(json).getJSONArray("data");
         if (data == null || data.isEmpty()) {
+            log.warn("调 顽鹿运动登录 失败，响应：{}", json);
             return null;
         }
+        log.info("调 顽鹿运动登录 成功，已获取 token");
         return data.getJSONObject(0).getString("token");
     }
 
@@ -139,37 +143,45 @@ public class OnelapService {
     }
 
     /**
-     * 活动列表：先 limit=20 取 total，再以 total 为 limit 全量取回。无 data 判为认证失效。
+     * 活动列表：先 limit={@value FIRST_PAGE_LIMIT} 取 total；total 不超过首页时直接复用首次结果，
+     * 否则再以 total 为 limit 全量取回。无 data 判为认证失效。
      */
     private JSONArray listActivities(String token, String startDateStr, String endDateStr) {
         JSONObject listReq = new JSONObject();
         listReq.put("page", 1);
-        listReq.put("limit", 20);
+        listReq.put("limit", FIRST_PAGE_LIMIT);
         listReq.put("start_date", startDateStr);
         listReq.put("end_date", endDateStr);
 
         String firstJson = HttpClientUtil.doPost(SyncConstants.ONELAP_ACTIVITY_LIST_URL,
                 new StringEntity(listReq.toJSONString(), ContentType.APPLICATION_JSON), authHeader(token));
-        log.info("调 顽鹿运动获取历史活动列表(首次) 接口响应值：{}", firstJson);
         JSONObject firstData = JSONObject.parseObject(firstJson).getJSONObject("data");
         if (firstData == null) {
             throw new AuthFailedException("顽鹿活动列表响应无 data，视为认证失效：" + firstJson);
         }
         int total = firstData.getJSONObject("pagination").getIntValue("total");
-        log.info("顽鹿运动 {} 至 {} 共 {} 条活动记录", startDateStr, endDateStr, total);
+        log.info("调 顽鹿运动获取历史活动列表(首次) 成功，{} 至 {} 共 {} 条活动记录", startDateStr, endDateStr, total);
         if (total == 0) {
             return new JSONArray();
+        }
+        if (total <= FIRST_PAGE_LIMIT) {
+            return firstData.getJSONArray("list");
         }
 
         listReq.put("limit", total);
         String allJson = HttpClientUtil.doPost(SyncConstants.ONELAP_ACTIVITY_LIST_URL,
                 new StringEntity(listReq.toJSONString(), ContentType.APPLICATION_JSON), authHeader(token));
-        log.info("调 顽鹿运动获取历史活动列表(全量) 接口响应值：{}", allJson);
         JSONObject allData = JSONObject.parseObject(allJson).getJSONObject("data");
         if (allData == null) {
             throw new AuthFailedException("顽鹿活动列表(全量)响应无 data，视为认证失效：" + allJson);
         }
-        return allData.getJSONArray("list");
+        JSONArray list = allData.getJSONArray("list");
+        int listSize = list == null ? 0 : list.size();
+        log.info("调 顽鹿运动获取历史活动列表(全量) 成功，返回 {} 条", listSize);
+        if (listSize != total) {
+            log.warn("顽鹿活动列表(全量)返回条数 {} 与 total {} 不一致，可能服务端对 limit 有上限，本次同步或有遗漏", listSize, total);
+        }
+        return list;
     }
 
     /**

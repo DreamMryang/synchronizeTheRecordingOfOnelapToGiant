@@ -35,8 +35,13 @@ public class GiantBikeService {
         formParams.add(new BasicNameValuePair("password", ConfigManager.getProperty("giant.password")));
         String json = HttpClientUtil.doPost(SyncConstants.GIANT_LOGIN_URL,
                 new UrlEncodedFormEntity(formParams, StandardCharsets.UTF_8), null);
-        log.info("调 捷安特骑行登录 接口响应值：{}", json);
-        return JSONObject.parseObject(json).getString("user_token");
+        String userToken = JSONObject.parseObject(json).getString("user_token");
+        if (userToken == null || userToken.isEmpty()) {
+            log.warn("调 捷安特骑行登录 失败，响应：{}", json);
+        } else {
+            log.info("调 捷安特骑行登录 成功，已获取 user_token");
+        }
+        return userToken;
     }
 
     /**
