@@ -17,6 +17,8 @@ val releaseKeystoreFile = rootProject.file("keystore/release-keystore.jks")
 val hasReleaseSigning = releaseKeystoreFile.exists() &&
     localProperties.getProperty("KEYSTORE_STORE_PASSWORD") != null
 
+val appVersionName = "1.0.0"
+
 android {
     namespace = "com.dreammryang.onelaptogiant"
     compileSdk = 35
@@ -26,7 +28,7 @@ android {
         minSdk = 26
         targetSdk = 35
         versionCode = 1
-        versionName = "1.0.0"
+        versionName = appVersionName
     }
 
     signingConfigs {
@@ -70,6 +72,11 @@ android {
             isReturnDefaultValues = true
         }
     }
+}
+
+// APK 产物命名：OnelapToGiant-v1.0.0-release.apk / -debug.apk
+base {
+    archivesName.set("OnelapToGiant-v$appVersionName")
 }
 
 kotlin {
