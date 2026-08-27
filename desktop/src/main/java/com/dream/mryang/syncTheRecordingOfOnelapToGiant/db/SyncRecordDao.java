@@ -97,7 +97,7 @@ public class SyncRecordDao {
     // ===== 查询 =====
 
     /**
-     * 查询可 reconcile 的记录：本机标记为 SYNCED / UPLOAD_FAILED 的 fit_url → status。
+     * 查询可 reconcile 的记录：本机标记为 SYNCED / UPLOAD_FAILED / PROCESS_FAILED 的 fit_url → status。
      * <p>
      * 依据服务端 all_upload 结果校正这些本机状态（真正处理成功 / 处理失败），
      * 见 {@code SyncLogic.reconcileLocal}。
@@ -105,10 +105,11 @@ public class SyncRecordDao {
     public static synchronized Map<String, String> findReconcilable() {
         ensureInitialized();
         Map<String, String> result = new LinkedHashMap<>();
-        String sql = "SELECT fit_url, status FROM sync_record WHERE status IN (?, ?)";
+        String sql = "SELECT fit_url, status FROM sync_record WHERE status IN (?, ?, ?)";
         try (PreparedStatement ps = conn.prepareStatement(sql)) {
             ps.setString(1, STATUS_SYNCED);
             ps.setString(2, STATUS_UPLOAD_FAILED);
+            ps.setString(3, STATUS_PROCESS_FAILED);
             try (ResultSet rs = ps.executeQuery()) {
                 while (rs.next()) {
                     result.put(rs.getString("fit_url"), rs.getString("status"));

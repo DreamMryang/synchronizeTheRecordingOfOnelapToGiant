@@ -69,6 +69,26 @@ class GiantApiTest {
     }
 
     @Test
+    fun `buildSummary 处理中状态不计入处理失败`() {
+        val records = listOf(
+            UploadRecord(file = "pending.fit", status = "上传中"),
+            UploadRecord(file = "processing.fit", status = "处理中"),
+        )
+        val summary = GiantApi.buildSummary(records)
+        assertEquals(setOf("pending.fit", "processing.fit"), summary.uploaded)
+        assertTrue(summary.failedProcess.isEmpty())
+    }
+
+    @Test
+    fun `buildSummary 同名多条只要有处理中就不算处理失败`() {
+        val records = listOf(
+            UploadRecord(file = "a.fit", status = "失败", msg = "解析出错"),
+            UploadRecord(file = "a.fit", status = "上传中"),
+        )
+        assertTrue(GiantApi.buildSummary(records).failedProcess.isEmpty())
+    }
+
+    @Test
     fun `fetchAllUpload 解析契约样例`() = runBlocking {
         server.enqueue(
             MockResponse().setBody(

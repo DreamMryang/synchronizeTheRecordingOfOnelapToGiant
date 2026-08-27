@@ -87,11 +87,16 @@ class GiantApi(
         const val STATUS_SUCCESS = "成功"
         private val FIT_MEDIA = "application/octet-stream".toMediaType()
 
-        // 同名多条：任一成功即成功；全部非成功 → 处理失败（取最后一条的状态+消息作展示文案）
+        // 服务端异步处理的中间态（见 docs/api/giant.md §3），不代表处理失败
+        private val PENDING_STATUSES = setOf("上传中", "处理中")
+
+        // 同名多条：任一成功即成功；有处理中视为待定；全部既非成功又非处理中 → 处理失败
         fun buildSummary(records: List<UploadRecord>): AllUploadSummary {
             val byFile = records.filter { it.file.isNotBlank() }.groupBy { it.file }
             val failed = byFile
-                .filterValues { list -> list.none { it.status == STATUS_SUCCESS } }
+                .filterValues { list ->
+                    list.none { it.status == STATUS_SUCCESS } && list.none { it.status in PENDING_STATUSES }
+                }
                 .mapValues { (_, list) ->
                     val last = list.last()
                     listOfNotNull(last.status.takeIf { it.isNotBlank() }, last.msg).joinToString(": ")

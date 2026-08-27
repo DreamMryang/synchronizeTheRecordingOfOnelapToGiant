@@ -13,6 +13,9 @@ import java.util.Map;
  */
 public class SyncLogic {
 
+    /** 服务端处理异步（docs/api/giant.md §3）：宽限期内的非成功不急于判失败 */
+    public static final long PROCESS_GRACE_MS = 48L * 60 * 60 * 1000L;
+
     private static final Logger log = LoggerFactory.getLogger(SyncLogic.class);
 
     private SyncLogic() {}
@@ -20,20 +23,30 @@ public class SyncLogic {
     /**
      * 依据服务端快照计算某本机记录应校正到的目标状态；无需变更时返回 null。
      * <ul>
-     *   <li>仅 SYNCED / UPLOAD_FAILED 参与校正，其余状态返回 null；</li>
-     *   <li>服务端处理失败（failedProcess 命中）→ PROCESS_FAILED；</li>
-     *   <li>服务端已上传（uploaded 命中）→ SYNCED；</li>
+     *   <li>SYNCED / UPLOAD_FAILED / PROCESS_FAILED 参与校正，其余状态返回 null；</li>
+     *   <li>服务端处理失败（failedProcess 命中）→ PROCESS_FAILED（宽限期内不急于判失败，见 {@link #PROCESS_GRACE_MS}）；</li>
+     *   <li>服务端已上传（uploaded 命中且不再报失败）→ SYNCED（含 PROCESS_FAILED 自愈）；</li>
      *   <li>服务端无记录 → null（保持现状，下次同步自然重试）；</li>
      *   <li>目标与现状相同 → null。</li>
      * </ul>
      */
-    public static String reconcileTarget(String currentStatus, String fitUrl, AllUploadSummary summary) {
-        if (!SyncRecordDao.STATUS_SYNCED.equals(currentStatus)
-                && !SyncRecordDao.STATUS_UPLOAD_FAILED.equals(currentStatus)) {
+    public static String reconcileTarget(String currentStatus, String fitUrl, AllUploadSummary summary,
+                                          Long syncTime, long now) {
+        boolean reconcilable = SyncRecordDao.STATUS_SYNCED.equals(currentStatus)
+                || SyncRecordDao.STATUS_UPLOAD_FAILED.equals(currentStatus)
+                || SyncRecordDao.STATUS_PROCESS_FAILED.equals(currentStatus);
+        if (!reconcilable) {
             return null;
         }
+
+        // 宽限期内不上结论：避免服务端未知中间态被误判为处理失败
+        boolean inGrace = syncTime != null && now - syncTime < PROCESS_GRACE_MS;
+
         String target;
         if (summary.getFailedProcess().containsKey(fitUrl)) {
+            if (inGrace && !SyncRecordDao.STATUS_PROCESS_FAILED.equals(currentStatus)) {
+                return null;
+            }
             target = SyncRecordDao.STATUS_PROCESS_FAILED;
         } else if (summary.getUploaded().contains(fitUrl)) {
             target = SyncRecordDao.STATUS_SYNCED;
@@ -51,10 +64,12 @@ public class SyncLogic {
         Map<String, String> reconcilable = SyncRecordDao.findReconcilable();
         int flippedToSynced = 0;
         int flippedToProcessFailed = 0;
+        long now = System.currentTimeMillis();
         for (Map.Entry<String, String> entry : reconcilable.entrySet()) {
             String fitUrl = entry.getKey();
             String current = entry.getValue();
-            String target = reconcileTarget(current, fitUrl, summary);
+            Long syncTime = SyncRecordDao.findSyncTime(fitUrl);
+            String target = reconcileTarget(current, fitUrl, summary, syncTime, now);
             if (target == null) {
                 continue;
             }

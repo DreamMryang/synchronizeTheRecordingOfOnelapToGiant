@@ -24,6 +24,7 @@ import org.junit.After
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNotNull
+import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Before
 import org.junit.Rule
@@ -169,6 +170,48 @@ class SyncEngineTest {
         val record = db.recordDao().getByFitUrl("bad.fit")!!
         assertEquals(RecordStatus.PROCESS_FAILED, record.status)
         assertEquals("失败: 解析出错", record.errorMsg)
+    }
+
+    @Test
+    fun `reconcile 将 PROCESS_FAILED 在服务端处理成功后自愈为 SYNCED`() = runBlocking {
+        val sid = db.sessionDao().insert(
+            com.dreammryang.onelaptogiant.data.db.SyncSessionEntity(
+                triggerType = TriggerType.AUTO, status = SessionStatus.SUCCESS, startedAt = 1L,
+            )
+        )
+        db.recordDao().insert(
+            SyncRecordEntity(
+                fitUrl = "bad.fit", sessionId = sid, status = RecordStatus.PROCESS_FAILED,
+                errorMsg = "失败: 解析出错", createdAt = 1L, updatedAt = 1L,
+            )
+        )
+        giant.summary = AllUploadSummary(setOf("bad.fit"), emptyMap())
+
+        engine.sync(TriggerType.AUTO)
+
+        val record = db.recordDao().getByFitUrl("bad.fit")!!
+        assertEquals(RecordStatus.SYNCED, record.status)
+        assertNull(record.errorMsg)
+    }
+
+    @Test
+    fun `reconcile 对刚上传不久的非成功文件保持 SYNCED 不误判`() = runBlocking {
+        val sid = db.sessionDao().insert(
+            com.dreammryang.onelaptogiant.data.db.SyncSessionEntity(
+                triggerType = TriggerType.AUTO, status = SessionStatus.SUCCESS, startedAt = 1L,
+            )
+        )
+        db.recordDao().insert(
+            SyncRecordEntity(
+                fitUrl = "pending.fit", sessionId = sid, status = RecordStatus.SYNCED,
+                syncTime = 1751443200000L, createdAt = 1L, updatedAt = 1L,
+            )
+        )
+        giant.summary = AllUploadSummary(setOf("pending.fit"), mapOf("pending.fit" to "失败: 稍后重试"))
+
+        engine.sync(TriggerType.AUTO)
+
+        assertEquals(RecordStatus.SYNCED, db.recordDao().getByFitUrl("pending.fit")!!.status)
     }
 
     @Test

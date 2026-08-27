@@ -74,7 +74,7 @@ public class SyncRecordDaoTest {
         assertEquals(SyncRecordDao.STATUS_UPLOAD_FAILED, SyncRecordDao.findStatus("e.fit"));
     }
 
-    // ===== 测试 7：findReconcilable 只返回 SYNCED / UPLOAD_FAILED =====
+    // ===== 测试 7：findReconcilable 返回 SYNCED / UPLOAD_FAILED / PROCESS_FAILED =====
     @Test
     public void testFindReconcilable_onlySyncedAndUploadFailed() {
         SyncRecordDao.upsertDownloaded("downloaded.fit", "u", 1L);          // DOWNLOADED，不参与
@@ -83,11 +83,15 @@ public class SyncRecordDaoTest {
         SyncRecordDao.markSynced(Arrays.asList("synced.fit"));              // SYNCED，参与
         SyncRecordDao.upsertDownloaded("upfail.fit", "u", 1L);
         SyncRecordDao.markUploadFailed(Arrays.asList("upfail.fit"), "500"); // UPLOAD_FAILED，参与
+        SyncRecordDao.upsertDownloaded("procfail.fit", "u", 1L);
+        SyncRecordDao.markSynced(Arrays.asList("procfail.fit"));
+        SyncRecordDao.updateStatus("procfail.fit", SyncRecordDao.STATUS_PROCESS_FAILED, "坏文件"); // PROCESS_FAILED，参与
 
         Map<String, String> reconcilable = SyncRecordDao.findReconcilable();
-        assertEquals(2, reconcilable.size());
+        assertEquals(3, reconcilable.size());
         assertEquals(SyncRecordDao.STATUS_SYNCED, reconcilable.get("synced.fit"));
         assertEquals(SyncRecordDao.STATUS_UPLOAD_FAILED, reconcilable.get("upfail.fit"));
+        assertEquals(SyncRecordDao.STATUS_PROCESS_FAILED, reconcilable.get("procfail.fit"));
         assertFalse(reconcilable.containsKey("downloaded.fit"));
         assertFalse(reconcilable.containsKey("dlfail.fit"));
     }

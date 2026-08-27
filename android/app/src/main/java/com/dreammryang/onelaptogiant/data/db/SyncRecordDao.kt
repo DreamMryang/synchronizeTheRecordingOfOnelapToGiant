@@ -20,7 +20,7 @@ interface SyncRecordDao {
     @Query("SELECT * FROM sync_record WHERE fit_url = :fitUrl")
     suspend fun getByFitUrl(fitUrl: String): SyncRecordEntity?
 
-    @Query("SELECT * FROM sync_record WHERE status IN ('SYNCED', 'UPLOAD_FAILED')")
+    @Query("SELECT * FROM sync_record WHERE status IN ('SYNCED', 'UPLOAD_FAILED', 'PROCESS_FAILED')")
     suspend fun getReconcilable(): List<SyncRecordEntity>
 
     @Query("SELECT * FROM sync_record WHERE session_id = :sessionId ORDER BY id")

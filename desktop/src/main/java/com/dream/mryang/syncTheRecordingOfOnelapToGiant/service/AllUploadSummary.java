@@ -4,7 +4,9 @@ import com.alibaba.fastjson2.JSONArray;
 import com.alibaba.fastjson2.JSONObject;
 import com.dream.mryang.syncTheRecordingOfOnelapToGiant.utils.AuthFailedException;
 
+import java.util.Arrays;
 import java.util.Collections;
+import java.util.HashSet;
 import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;
 import java.util.Map;
@@ -23,6 +25,10 @@ public class AllUploadSummary {
 
     /** 服务端真实处理状态：成功 */
     public static final String STATUS_SUCCESS = "成功";
+
+    /** 服务端异步处理的中间态（见 docs/api/giant.md §3），不代表处理失败 */
+    private static final Set<String> PENDING_STATUSES =
+            new HashSet<>(Arrays.asList("上传中", "处理中"));
 
     private final Set<String> uploaded;
     private final Map<String, String> failedProcess;
@@ -59,7 +65,9 @@ public class AllUploadSummary {
         Set<String> uploaded = new LinkedHashSet<>();
         // 文件名 → 是否已有任一成功
         Map<String, Boolean> anySuccess = new LinkedHashMap<>();
-        // 文件名 → 最后一条的失败文案（仅在无成功时有意义）
+        // 文件名 → 是否已有任一处理中（上传中/处理中）
+        Map<String, Boolean> anyPending = new LinkedHashMap<>();
+        // 文件名 → 最后一条的失败文案（仅在既无成功又无处理中时有意义）
         Map<String, String> lastFailedText = new LinkedHashMap<>();
 
         for (int i = 0; i < data.size(); i++) {
@@ -73,14 +81,17 @@ public class AllUploadSummary {
             String recordStatus = item.getString("status");
             boolean success = STATUS_SUCCESS.equals(recordStatus);
             anySuccess.merge(file, success, Boolean::logicalOr);
-            if (!success) {
+            anyPending.merge(file, PENDING_STATUSES.contains(recordStatus), Boolean::logicalOr);
+            if (!success && !PENDING_STATUSES.contains(recordStatus)) {
                 lastFailedText.put(file, buildFailedText(recordStatus, item.getString("msg")));
             }
         }
 
         Map<String, String> failedProcess = new LinkedHashMap<>();
         for (String file : uploaded) {
-            if (!Boolean.TRUE.equals(anySuccess.get(file))) {
+            boolean anyS = Boolean.TRUE.equals(anySuccess.get(file));
+            boolean anyP = Boolean.TRUE.equals(anyPending.get(file));
+            if (!anyS && !anyP) {
                 failedProcess.put(file, lastFailedText.get(file));
             }
         }

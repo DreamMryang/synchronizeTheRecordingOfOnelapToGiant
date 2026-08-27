@@ -249,7 +249,7 @@ class SyncEngine(
 
     private suspend fun reconcileLocal(summary: AllUploadSummary) {
         for (record in recordDao.getReconcilable()) {
-            val newStatus = SyncLogic.reconcile(record.status, record.fitUrl, summary) ?: continue
+            val newStatus = SyncLogic.reconcile(record.status, record.fitUrl, summary, record.syncTime, clock()) ?: continue
             val now = clock()
             recordDao.update(
                 record.copy(

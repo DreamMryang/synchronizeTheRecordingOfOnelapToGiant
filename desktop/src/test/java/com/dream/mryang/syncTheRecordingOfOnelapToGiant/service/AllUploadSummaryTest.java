@@ -37,11 +37,33 @@ public class AllUploadSummaryTest {
     @Test
     public void testParse_allFailed_recordedWithLastStatusAndMsg() {
         String json = "{\"status\":1,\"data\":[" +
-                "{\"file\":\"c.fit\",\"status\":\"处理中\",\"msg\":\"first\"}," +
+                "{\"file\":\"c.fit\",\"status\":\"解析出错\",\"msg\":\"first\"}," +
                 "{\"file\":\"c.fit\",\"status\":\"处理失败\",\"msg\":\"坏文件\"}]}";
         AllUploadSummary s = AllUploadSummary.parse(json);
         assertTrue("已上传即入 uploaded（任意状态）", s.getUploaded().contains("c.fit"));
         assertEquals("处理失败: 坏文件", s.getFailedProcess().get("c.fit"));
+    }
+
+    // ===== 测试 8：处理中/上传中 是异步中间态，不计入处理失败 =====
+    @Test
+    public void testParse_pendingStatus_notCountedAsFailed() {
+        String json = "{\"status\":1,\"data\":[" +
+                "{\"file\":\"p.fit\",\"status\":\"上传中\"}," +
+                "{\"file\":\"q.fit\",\"status\":\"处理中\"}]}";
+        AllUploadSummary s = AllUploadSummary.parse(json);
+        assertTrue(s.getUploaded().contains("p.fit"));
+        assertTrue(s.getUploaded().contains("q.fit"));
+        assertTrue("处理中/上传中不应判为处理失败", s.getFailedProcess().isEmpty());
+    }
+
+    // ===== 测试 9：同名多条只要有一条处理中就不算处理失败 =====
+    @Test
+    public void testParse_anyPending_notCountedAsFailed() {
+        String json = "{\"status\":1,\"data\":[" +
+                "{\"file\":\"r.fit\",\"status\":\"处理失败\",\"msg\":\"坏\"}," +
+                "{\"file\":\"r.fit\",\"status\":\"上传中\"}]}";
+        AllUploadSummary s = AllUploadSummary.parse(json);
+        assertFalse("存在处理中记录时不应判为处理失败", s.getFailedProcess().containsKey("r.fit"));
     }
 
     // ===== 测试 4：空白 file 过滤 =====

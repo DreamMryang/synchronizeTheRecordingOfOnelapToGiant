@@ -76,14 +76,18 @@ class SyncDaoTest {
     }
 
     @Test
-    fun `getReconcilable 只返回 SYNCED 与 UPLOAD_FAILED`() = runTest {
+    fun `getReconcilable 返回已上传到服务端的三种状态`() = runTest {
         val sid = db.sessionDao().insert(session())
         db.recordDao().insert(record("a.fit", sid, RecordStatus.SYNCED))
         db.recordDao().insert(record("b.fit", sid, RecordStatus.UPLOAD_FAILED))
         db.recordDao().insert(record("c.fit", sid, RecordStatus.DOWNLOAD_FAILED))
         db.recordDao().insert(record("d.fit", sid, RecordStatus.PROCESS_FAILED))
+        db.recordDao().insert(record("e.fit", sid, RecordStatus.DOWNLOADED))
 
-        assertEquals(setOf("a.fit", "b.fit"), db.recordDao().getReconcilable().map { it.fitUrl }.toSet())
+        assertEquals(
+            setOf("a.fit", "b.fit", "d.fit"),
+            db.recordDao().getReconcilable().map { it.fitUrl }.toSet(),
+        )
     }
 
     @Test
