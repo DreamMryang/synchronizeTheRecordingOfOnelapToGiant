@@ -41,6 +41,7 @@ build/
 .DS_Store
 
 CLAUDE.md
+/docs/android-release.md
 
 ### Android release 签名（私钥与密码绝不入库）###
 keystore/

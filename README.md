@@ -12,11 +12,11 @@
 
 ## 多端结构（monorepo）
 
-| 目录 | 端 | 状态 |
-|---|---|---|
-| [`android/`](android/) | Android App（Kotlin + Jetpack Compose + Material 3） | **可用 v1.0.0**（[下载 APK](../../releases)） |
+| 目录 | 端 | 状态                                          |
+|---|---|---------------------------------------------|
+| [`android/`](android/) | Android App（Kotlin + Jetpack Compose + Material 3） | [下载 APK](../../releases)      |
 | [`desktop/`](desktop/) | 桌面/服务器端（Java 8 + Maven，fat-jar 常驻后台） | 可用（[详细文档](desktop/PROJECT_DOCUMENTATION.md)） |
-| `windows/` / `ios/` | 未来计划 | 未开始 |
+| `windows/` / `ios/` | 未来计划 | 未开始                                         |
 
 多端可同时运行：去重不依赖任何本地/共享数据库，而是以**捷安特服务端「已上传文件列表」为唯一事实源**，各端互不感知。
 
