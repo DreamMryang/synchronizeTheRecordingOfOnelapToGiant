@@ -17,7 +17,7 @@ val releaseKeystoreFile = rootProject.file("keystore/release-keystore.jks")
 val hasReleaseSigning = releaseKeystoreFile.exists() &&
     localProperties.getProperty("KEYSTORE_STORE_PASSWORD") != null
 
-val appVersionName = "1.0.0"
+val appVersionName = "1.1.0"
 
 android {
     namespace = "com.dreammryang.onelaptogiant"
@@ -27,7 +27,7 @@ android {
         applicationId = "com.dreammryang.onelaptogiant"
         minSdk = 26
         targetSdk = 35
-        versionCode = 1
+        versionCode = 2
         versionName = appVersionName
     }
 

@@ -48,7 +48,7 @@ class OnelapApiTest {
 
     @Test
     fun `登录携带正确签名三件套并返回 token`() = runBlocking {
-        server.enqueue(MockResponse().setBody("""{"data":[{"token":"tok-1"}]}"""))
+        server.enqueue(MockResponse().setBody("""{"data":[{"userinfo":{"uid":123456},"token":"tok-1"}]}"""))
 
         val token = api.login("13800138000", "pass123")
 
@@ -71,6 +71,8 @@ class OnelapApiTest {
 
     @Test
     fun `活动列表两阶段查询 total 大于首页时二次全量拉取`() = runBlocking {
+        login()
+        server.enqueue(MockResponse().setBody("""{"code":200,"message":"success"}"""))
         server.enqueue(
             MockResponse().setBody(
                 """{"data":{"pagination":{"total":3},"list":[{"id":"6a45f39dc323b737cc09a3a1"},{"id":"6a45f39dc323b737cc09a3a2"}]}}"""
@@ -88,21 +90,174 @@ class OnelapApiTest {
             listOf("6a45f39dc323b737cc09a3a1", "6a45f39dc323b737cc09a3a2", "6a45f39dc323b737cc09a3a3"),
             ids,
         )
-        val first = server.takeRequest().body.readUtf8()
-        val second = server.takeRequest().body.readUtf8()
-        assertTrue(first.contains("\"limit\":20"))
-        assertTrue(second.contains("\"limit\":3"))
+        val refresh = server.takeRequest()
+        assertEquals("/api/otm/ride_record/capability_list", refresh.path)
+        assertEquals("POST", refresh.method)
+        assertEquals("tok", refresh.getHeader("Authorization"))
+        assertEquals("""{"uid":"123456"}""", refresh.body.readUtf8())
+        val first = server.takeRequest()
+        val second = server.takeRequest()
+        assertEquals("/api/otm/ride_record/list", first.path)
+        assertEquals("/api/otm/ride_record/list", second.path)
+        assertEquals("tok", first.getHeader("Authorization"))
+        assertTrue(first.body.readUtf8().contains("\"limit\":20"))
+        assertTrue(second.body.readUtf8().contains("\"limit\":3"))
+        assertEquals(4, server.requestCount)
     }
 
     @Test
-    fun `活动列表 total 不超过首页时只请求一次`() = runBlocking {
+    fun `活动列表 total 不超过首页时刷新后只查询一次`() = runBlocking {
+        login()
+        server.enqueue(MockResponse().setBody("""{"code":200,"message":"success"}"""))
         server.enqueue(
             MockResponse().setBody(
                 """{"data":{"pagination":{"total":1},"list":[{"id":"6a45f39dc323b737cc09a3a7"}]}}"""
             )
         )
         assertEquals(listOf("6a45f39dc323b737cc09a3a7"), api.listActivityIds("tok", "2026-06-01", "2026-07-01"))
+        assertEquals(3, server.requestCount)
+        assertEquals("/api/otm/ride_record/capability_list", server.takeRequest().path)
+        assertEquals("/api/otm/ride_record/list", server.takeRequest().path)
+    }
+
+    @Test
+    fun `每次查询列表都刷新且兼容字符串成功码`() = runBlocking {
+        login()
+        repeat(2) {
+            server.enqueue(MockResponse().setBody("""{"code":"200","message":"success"}"""))
+            server.enqueue(MockResponse().setBody("""{"data":{"pagination":{"total":0},"list":[]}}"""))
+
+            assertEquals(emptyList<String>(), api.listActivityIds("tok", "2026-06-01", "2026-07-01"))
+            assertEquals("/api/otm/ride_record/capability_list", server.takeRequest().path)
+            assertEquals("/api/otm/ride_record/list", server.takeRequest().path)
+        }
+        assertEquals(5, server.requestCount)
+    }
+
+    @Test
+    fun `刷新业务失败或缺少 code 时不查询列表`(): Unit = runBlocking {
+        login()
+        for (body in listOf("""{"code":401,"message":"expired"}""", """{"message":"missing code"}""")) {
+            server.enqueue(MockResponse().setBody(body))
+
+            assertThrows(AuthFailedException::class.java) {
+                runBlocking { api.listActivityIds("tok", "2026-06-01", "2026-07-01") }
+            }
+            assertEquals("/api/otm/ride_record/capability_list", server.takeRequest().path)
+        }
+        assertEquals(3, server.requestCount)
+    }
+
+    @Test
+    fun `刷新 HTTP 401 或 403 时不查询列表`(): Unit = runBlocking {
+        login()
+        for (code in listOf(401, 403)) {
+            server.enqueue(MockResponse().setResponseCode(code))
+
+            assertThrows(AuthFailedException::class.java) {
+                runBlocking { api.listActivityIds("tok", "2026-06-01", "2026-07-01") }
+            }
+            assertEquals("/api/otm/ride_record/capability_list", server.takeRequest().path)
+        }
+        assertEquals(3, server.requestCount)
+    }
+
+    @Test
+    fun `登录缺少 UID 或 token 为空时失败`(): Unit = runBlocking {
+        for (data in listOf(
+            """{"token":"tok"}""",
+            """{"userinfo":{},"token":"tok"}""",
+            """{"userinfo":{"uid":123456},"token":""}""",
+        )) {
+            server.enqueue(MockResponse().setBody("""{"data":[$data]}"""))
+            assertThrows(LoginFailedException::class.java) {
+                runBlocking { api.login("a", "b") }
+            }
+        }
+    }
+
+    @Test
+    fun `缓存 token 缺少对应 UID 时续登后刷新列表`() = runBlocking {
+        val manager = tokenManager("persisted-token")
+        server.enqueue(MockResponse().setBody("""{"data":[{"userinfo":{"uid":654321},"token":"fresh"}]}"""))
+        server.enqueue(MockResponse().setBody("""{"code":200,"message":"success"}"""))
+        server.enqueue(MockResponse().setBody("""{"data":{"pagination":{"total":0},"list":[]}}"""))
+
+        val ids = manager.withAuthRetry { api.listActivityIds(it, "2026-06-01", "2026-07-01") }
+
+        assertEquals(emptyList<String>(), ids)
+        assertEquals(3, server.requestCount)
+        assertEquals("/api/login", server.takeRequest().path)
+        val refresh = server.takeRequest()
+        assertEquals("/api/otm/ride_record/capability_list", refresh.path)
+        assertEquals("fresh", refresh.getHeader("Authorization"))
+        assertEquals("""{"uid":"654321"}""", refresh.body.readUtf8())
+        assertEquals("/api/otm/ride_record/list", server.takeRequest().path)
+    }
+
+    @Test
+    fun `刷新失败续登后使用新 UID 和 token 重试`() = runBlocking {
+        login()
+        val manager = tokenManager("tok")
+        server.enqueue(MockResponse().setBody("""{"code":401,"message":"expired"}"""))
+        server.enqueue(MockResponse().setBody("""{"data":[{"userinfo":{"uid":654321},"token":"fresh"}]}"""))
+        server.enqueue(MockResponse().setBody("""{"code":200,"message":"success"}"""))
+        server.enqueue(MockResponse().setBody("""{"data":{"pagination":{"total":0},"list":[]}}"""))
+
+        assertEquals(emptyList<String>(), manager.withAuthRetry {
+            api.listActivityIds(it, "2026-06-01", "2026-07-01")
+        })
+        assertEquals(5, server.requestCount)
+        val first = server.takeRequest()
+        assertEquals("/api/otm/ride_record/capability_list", first.path)
+        assertEquals("tok", first.getHeader("Authorization"))
+        assertEquals("""{"uid":"123456"}""", first.body.readUtf8())
+        assertEquals("/api/login", server.takeRequest().path)
+        val retry = server.takeRequest()
+        assertEquals("/api/otm/ride_record/capability_list", retry.path)
+        assertEquals("fresh", retry.getHeader("Authorization"))
+        assertEquals("""{"uid":"654321"}""", retry.body.readUtf8())
+        assertEquals("fresh", server.takeRequest().getHeader("Authorization"))
+    }
+
+    @Test
+    fun `刷新失败续登后再次失败不再重试`(): Unit = runBlocking {
+        login()
+        val manager = tokenManager("tok")
+        server.enqueue(MockResponse().setBody("""{"code":401}"""))
+        server.enqueue(MockResponse().setBody("""{"data":[{"userinfo":{"uid":654321},"token":"fresh"}]}"""))
+        server.enqueue(MockResponse().setBody("""{"code":401}"""))
+
+        assertThrows(AuthFailedException::class.java) {
+            runBlocking { manager.withAuthRetry { api.listActivityIds(it, "2026-06-01", "2026-07-01") } }
+        }
+        assertEquals(4, server.requestCount)
+    }
+
+    @Test
+    fun `token 不匹配时不使用旧 UID 刷新`(): Unit = runBlocking {
+        login()
+        assertThrows(AuthFailedException::class.java) {
+            runBlocking { api.listActivityIds("other-token", "2026-06-01", "2026-07-01") }
+        }
         assertEquals(1, server.requestCount)
+    }
+
+    private suspend fun login() {
+        server.enqueue(MockResponse().setBody("""{"data":[{"userinfo":{"uid":123456},"token":"tok"}]}"""))
+        assertEquals("tok", api.login("a", "b"))
+        assertEquals("/api/login", server.takeRequest().path)
+    }
+
+    private fun tokenManager(token: String): com.dreammryang.onelaptogiant.data.auth.TokenManager {
+        val context = androidx.test.core.app.ApplicationProvider
+            .getApplicationContext<android.content.Context>()
+        val prefs = context.getSharedPreferences("test_onelap_refresh", android.content.Context.MODE_PRIVATE)
+        prefs.edit().clear().commit()
+        val store = com.dreammryang.onelaptogiant.data.auth.TokenStore(prefs)
+        val platform = com.dreammryang.onelaptogiant.data.auth.Platform.ONELAP
+        store.set(platform, token)
+        return com.dreammryang.onelaptogiant.data.auth.TokenManager(platform, store) { api.login("a", "b") }
     }
 
     @Test
@@ -149,7 +304,7 @@ class OnelapApiTest {
         ) { api.login("13800138000", "pass123") }
 
         server.enqueue(MockResponse().setResponseCode(401))                       // 旧 token 请求
-        server.enqueue(MockResponse().setBody("""{"data":[{"token":"fresh"}]}""")) // 自动续登
+        server.enqueue(MockResponse().setBody("""{"data":[{"userinfo":{"uid":123456},"token":"fresh"}]}""")) // 自动续登
         server.enqueue(MockResponse().setBody("""{"data":{"ridingRecord":{"fitUrl":"a.fit"}}}""")) // 重试
 
         val fitUrl = manager.withAuthRetry { token -> api.fetchFitUrl(token, "101") }

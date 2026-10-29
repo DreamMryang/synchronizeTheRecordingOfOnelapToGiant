@@ -6,6 +6,7 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.json.Json
+import kotlinx.serialization.json.JsonPrimitive
 import kotlinx.serialization.json.buildJsonObject
 import kotlinx.serialization.json.put
 import okhttp3.MediaType.Companion.toMediaType
@@ -13,6 +14,7 @@ import okhttp3.OkHttpClient
 import okhttp3.Request
 import okhttp3.RequestBody.Companion.toRequestBody
 import okhttp3.Response
+import timber.log.Timber
 import java.io.File
 import java.io.IOException
 import java.util.Base64
@@ -21,7 +23,13 @@ import java.util.Base64
 data class OnelapLoginResponse(val data: List<OnelapLoginData>? = null)
 
 @Serializable
-data class OnelapLoginData(val token: String? = null)
+data class OnelapLoginData(val token: String? = null, val userinfo: OnelapUserInfo? = null)
+
+@Serializable
+data class OnelapUserInfo(val uid: Long? = null)
+
+@Serializable
+data class CapabilityListResponse(val code: JsonPrimitive? = null, val message: String? = null)
 
 @Serializable
 data class RideListResponse(val data: RideListData? = null)
@@ -53,6 +61,11 @@ class OnelapApi(
     private val timestampProvider: () -> Long = { System.currentTimeMillis() / 1000 },
 ) : OnelapClient {
 
+    private data class LoginSession(val token: String, val uid: Long)
+
+    @Volatile
+    private var loginSession: LoginSession? = null
+
     suspend fun login(account: String, passwordPlain: String): String = withContext(Dispatchers.IO) {
         val passwordMd5 = OnelapSign.md5Hex(passwordPlain)
         val nonce = nonceProvider()
@@ -71,8 +84,13 @@ class OnelapApi(
         client.newCall(request).execute().use { resp ->
             val text = resp.body?.string().orEmpty()
             val parsed = runCatching { json.decodeFromString<OnelapLoginResponse>(text) }.getOrNull()
-            parsed?.data?.firstOrNull()?.token
-                ?: throw LoginFailedException("顽鹿登录失败: HTTP ${resp.code}, body=$text")
+            val data = parsed?.data?.firstOrNull()
+            val token = data?.token?.takeIf { it.isNotBlank() }
+                ?: throw LoginFailedException("顽鹿登录失败: HTTP ${resp.code}")
+            val uid = data.userinfo?.uid
+                ?: throw LoginFailedException("顽鹿登录失败: 响应缺少 userinfo.uid")
+            loginSession = LoginSession(token, uid)
+            token
         }
     }
 
@@ -81,6 +99,7 @@ class OnelapApi(
         startDate: String,
         endDate: String,
     ): List<String> = withContext(Dispatchers.IO) {
+        refreshActivityList(token)
         // 惯用两阶段：先 limit=20 取 total，total 更大时再全量取回
         val first = queryList(token, limit = 20, startDate, endDate)
         val total = first.pagination?.total ?: 0
@@ -90,6 +109,26 @@ class OnelapApi(
             first.list
         }
         (items ?: emptyList()).map { it.id }
+    }
+
+    private fun refreshActivityList(token: String) {
+        // 进程重启后可能只有持久化 token；缺少对应 UID 时由 TokenManager 续登补全。
+        val session = loginSession?.takeIf { it.token == token }
+            ?: throw AuthFailedException("顽鹿缺少当前 token 对应的 UID，需重新登录")
+        val body = buildJsonObject { put("uid", session.uid.toString()) }
+        val request = Request.Builder()
+            .url("$apiBaseUrl/api/otm/ride_record/capability_list")
+            .header("Authorization", token)
+            .post(body.toString().toRequestBody(JSON_MEDIA))
+            .build()
+        client.newCall(request).execute().use { resp ->
+            ensureAuthorized(resp)
+            val parsed = json.decodeFromString<CapabilityListResponse>(resp.body?.string().orEmpty())
+            if (parsed.code?.content != "200") {
+                throw AuthFailedException("顽鹿 capability_list 接口返回非 200 code，视为认证失效：${parsed.message}")
+            }
+            Timber.i("调 capability_list 接口，响应值 code：%s, message：%s", parsed.code.content, parsed.message)
+        }
     }
 
     private fun queryList(token: String, limit: Int, startDate: String, endDate: String): RideListData {
