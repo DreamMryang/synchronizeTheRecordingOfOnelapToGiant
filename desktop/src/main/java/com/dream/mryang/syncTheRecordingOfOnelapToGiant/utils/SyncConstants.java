@@ -5,6 +5,8 @@ public class SyncConstants {
     public static final String ONELAP_LOGIN_URL = "https://www.onelap.cn/api/login";
     /** 顽鹿运动获取历史活动列表的接口地址 */
     public static final String ONELAP_ACTIVITY_LIST_URL = "https://u.onelap.cn/api/otm/ride_record/list";
+    /** 顽鹿运动获取历史活动列表之前要调用的接口地址 */
+    public static final String ONELAP_CAPABILITY_LIST_URL = "https://u.onelap.cn/api/otm/ride_record/capability_list";
     /** 顽鹿运动获取活动详情的接口地址前缀（后接活动id） */
     public static final String ONELAP_ACTIVITY_DETAIL_URL = "https://u.onelap.cn/api/otm/ride_record/analysis/";
     /** 顽鹿运动下载FIT文件的接口地址前缀（后接fitUrl的Base64编码） */

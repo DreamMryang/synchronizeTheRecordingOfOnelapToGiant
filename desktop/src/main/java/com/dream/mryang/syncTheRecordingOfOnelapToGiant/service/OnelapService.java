@@ -22,18 +22,22 @@ public class OnelapService {
     private static final Logger log = LoggerFactory.getLogger(OnelapService.class);
     private static final DateTimeFormatter DATE_FMT = DateTimeFormatter.ofPattern("yyyy-MM-dd");
 
-    /** 活动列表首次探测请求的分页大小；total 不超过它时首次响应即全量，无需二次调用。 */
+    /**
+     * 活动列表首次探测请求的分页大小；total 不超过它时首次响应即全量，无需二次调用。
+     */
     private static final int FIRST_PAGE_LIMIT = 20;
 
     /**
      * token 缓存：仅首次登录，失效由业务响应判定后续登重试。
      */
-    private final TokenCache tokenCache = new TokenCache(OnelapService::login);
+    private final TokenCache tokenCache = new TokenCache(this::login);
+
+    private String uid;
 
     /**
-     * 顽鹿签名登录，取 data[0].token。返回 null/空由 {@link TokenCache} 判为登录失败。
+     * 顽鹿签名登录，取 data[0].token 并缓存 userinfo.uid。返回 null/空由 {@link TokenCache} 判为登录失败。
      */
-    private static String login() {
+    private String login() {
         String nonce = UUID.randomUUID().toString().replace("-", "").substring(16);
         String timestamp = String.valueOf(Instant.now().getEpochSecond());
         String account = ConfigManager.getProperty("onelap.account");
@@ -52,13 +56,25 @@ public class OnelapService {
 
         String json = HttpClientUtil.doPost(SyncConstants.ONELAP_LOGIN_URL,
                 new StringEntity(loginReq.toJSONString(), ContentType.APPLICATION_JSON), loginHeaders);
+        return parseLoginResponse(json);
+    }
+
+    private String parseLoginResponse(String json) {
         JSONArray data = JSONObject.parseObject(json).getJSONArray("data");
         if (data == null || data.isEmpty()) {
             log.warn("调 顽鹿运动登录 失败，响应：{}", json);
             return null;
         }
-        log.info("调 顽鹿运动登录 成功，已获取 token");
-        return data.getJSONObject(0).getString("token");
+        JSONObject loginData = data.getJSONObject(0);
+        JSONObject userinfo = loginData.getJSONObject("userinfo");
+        String loginUid = userinfo == null ? null : userinfo.getString("uid");
+        if (loginUid == null || loginUid.isEmpty()) {
+            log.warn("调 顽鹿运动登录 失败，响应缺少 userinfo.uid");
+            return null;
+        }
+        uid = loginUid;
+        log.info("调 顽鹿运动登录 成功，已获取 token 和 uid");
+        return loginData.getString("token");
     }
 
     private static HashMap<String, String> authHeader(String token) {
@@ -84,7 +100,7 @@ public class OnelapService {
 
         // 1. 活动列表（先取 total 再全量）
         JSONArray myActivities = tokenCache.withAuthRetry(token ->
-                listActivities(token, startDateStr, endDateStr));
+                listActivities(token, uid, startDateStr, endDateStr));
         if (myActivities == null || myActivities.isEmpty()) {
             return new ArrayList<>();
         }
@@ -146,7 +162,20 @@ public class OnelapService {
      * 活动列表：先 limit={@value FIRST_PAGE_LIMIT} 取 total；total 不超过首页时直接复用首次结果，
      * 否则再以 total 为 limit 全量取回。无 data 判为认证失效。
      */
-    private JSONArray listActivities(String token, String startDateStr, String endDateStr) {
+    private JSONArray listActivities(String token, String uid, String startDateStr, String endDateStr) {
+        // 调用 ONELAP_CAPABILITY_LIST_URL 接口 触发 ONELAP_ACTIVITY_LIST_URL 列表刷新
+        JSONObject listReqCapabilityList = new JSONObject();
+        listReqCapabilityList.put("uid", uid);
+        String capabilityListJson = HttpClientUtil.doPost(SyncConstants.ONELAP_CAPABILITY_LIST_URL,
+                new StringEntity(listReqCapabilityList.toJSONString(), ContentType.APPLICATION_JSON), authHeader(token));
+        JSONObject jsonObject = JSONObject.parseObject(capabilityListJson);
+        String capabilityListCode = jsonObject.getString("code");
+        String message = jsonObject.getString("message");
+        if (!"200".equals(capabilityListCode)) {
+            throw new AuthFailedException("顽鹿 capability_list 接口返回非 200 code，视为认证失效：" + message);
+        }
+        log.info("调 capability_list 接口，响应值code：{}, message：{}", capabilityListCode, message);
+
         JSONObject listReq = new JSONObject();
         listReq.put("page", 1);
         listReq.put("limit", FIRST_PAGE_LIMIT);
